@@ -1,0 +1,15 @@
+@import url(variables.css);
+@import url(header.css);
+@import url(footer.css);
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--quinta);
+}
+
+body::after {
+  content: '';
+  display: block;
+  height: var(--footer-height); 
+}

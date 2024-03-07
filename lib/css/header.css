@@ -1,0 +1,18 @@
+header {
+ box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.1);
+ background: var(--primeira);
+ position: fixed;
+ width: 96%;
+ top: 0;
+ color: white;
+}
+
+header, nav ul {
+ display: flex;
+ justify-content: space-between;
+ padding: 2%;
+}
+
+nav ul li {
+ margin-left: 25px;
+}
