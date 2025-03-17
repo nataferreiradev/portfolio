@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
             title: "My DMBS",
             description: "A free DBMS made with Go for study purposes.",
-            link: "../pages/projects/my_dbms.html",
+            link: "src/pages/projects/my_dbms.html",
             working: true,
         }
     ];
