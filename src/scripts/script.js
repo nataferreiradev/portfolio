@@ -99,7 +99,7 @@ function renderTabNewsPosts(username) {
             postContent.textContent = post.content;
 
             const tag = document.createElement('span');
-            tag.textContent = 'Postado no TabNews';
+            tag.textContent = 'TabNews post';
             tag.className = 'tabnews-tag';
 
             postDiv.appendChild(postTitle);
