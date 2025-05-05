@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const username = 'nataferreiradev';
+    let tabNewsPostsCount = renderTabNewsPosts(username);
+
     const posts = [];
 
     const projects = [
@@ -11,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     const postsContainer = document.getElementById('posts-container');
-    if(posts.length === 0) {
+    if((posts.length+tabNewsPostsCount) === 0) {
         const noPosts = document.createElement('p');
         noPosts.textContent = 'No posts to show.';
         postsContainer.appendChild(noPosts);
@@ -67,3 +70,72 @@ document.addEventListener('DOMContentLoaded', () => {
         projectsSection.appendChild(projectLink);
     });
 });
+function renderTabNewsPosts(username) {
+    const postsContainer = document.getElementById('posts-container');
+    postsContainer.innerHTML = ''; // limpa o container
+
+    getTabNewsPosts(username).then(posts => {
+        if (posts.length === 0) {
+            const noPosts = document.createElement('p');
+            noPosts.textContent = 'No posts to show.';
+            postsContainer.appendChild(noPosts);
+            return;
+        }
+
+        posts.forEach(post => {
+            const postLink = document.createElement('a');
+            postLink.href = post.link;
+            postLink.target = '_blank';
+            postLink.style.textDecoration = 'none';
+            postLink.style.color = 'inherit';
+
+            const postDiv = document.createElement('div');
+            postDiv.className = 'post';
+
+            const postTitle = document.createElement('h3');
+            postTitle.textContent = post.title;
+
+            const postContent = document.createElement('p');
+            postContent.textContent = post.content;
+
+            const tag = document.createElement('span');
+            tag.textContent = 'Postado no TabNews';
+            tag.className = 'tabnews-tag';
+
+            postDiv.appendChild(postTitle);
+            postDiv.appendChild(postContent);
+            postDiv.appendChild(tag);
+
+            postLink.appendChild(postDiv);
+            postsContainer.appendChild(postLink);
+        });
+    });
+}
+
+
+function getTabNewsPosts(username) {
+    return fetch(`https://www.tabnews.com.br/api/v1/contents/${username}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Erro na requisição: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            return data
+                .filter(post => post.parent_id === null)
+                .map(post => ({
+                    title: captalize(post.title),
+                    content: post.body ? post.body.substring(0, 100) + '...' : '',
+                    link: `https://www.tabnews.com.br/${post.owner_username}/${post.slug}`
+                }));
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            return [];
+        });
+}
+
+function captalize(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
