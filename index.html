@@ -10,37 +10,49 @@
 
 </head>
 <body>
-    <header>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/portfolio</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
+    <header class="home-header">
         <h1>Natã Nogueira Ferreira</h1>
         <nav>
             <ul>
-                <li><a href="#sobre"><i class="fas fa-user"></i> About me</a></li>
-                <li><a href="#posts"><i class="fas fa-blog"></i> Posts</a></li>
-                <li><a href="#projetos"><i class="fas fa-project-diagram"></i> Projects</a></li>
+                <li><a href="#sobre"><i class="fas fa-user"></i> <span data-pt="sobre">about</span></a></li>
+                <li><a href="#posts"><i class="fas fa-blog"></i> <span data-pt="posts">posts</span></a></li>
+                <li><a href="#projetos"><i class="fas fa-project-diagram"></i> <span data-pt="projetos">projects</span></a></li>
+                <li><a href="#contact"><i class="fas fa-address-book"></i> <span data-pt="contato">contact</span></a></li>
             </ul>
         </nav>
     </header>
-    
+
     <main>
     <section id="sobre" aria-label="About Me">
-        <h2><i class="fas fa-user"></i> About me</h2>
-        <p>I am a software engineer with experience in mobile application development. I have a passion for solving complex problems and creating efficient solutions, always striving to improve my skills and learn new technologies. My focus is on writing high-quality code and developing applications that make a real impact...</p>
-        <p>Actually, I am a mid-level mobile developer at Compusoftware in Araçatuba, SP, Brazil.</p>
-        <p>I am based in Brazil.</p>
+        <h2 data-pt="cat sobre.md">cat about.md</h2>
+        <p data-pt="Sou um engenheiro de software com experiência em desenvolvimento de aplicativos mobile. Tenho paixão por resolver problemas complexos e criar soluções eficientes, sempre buscando aprimorar minhas habilidades e aprender novas tecnologias. Meu foco é escrever código de alta qualidade e desenvolver aplicações que gerem impacto real...">I am a software engineer with experience in mobile application development. I have a passion for solving complex problems and creating efficient solutions, always striving to improve my skills and learn new technologies. My focus is on writing high-quality code and developing applications that make a real impact...</p>
+        <p data-pt="Atualmente, sou desenvolvedor mobile pleno na Compusoftware, em Araçatuba, SP, Brasil.">Actually, I am a mid-level mobile developer at Compusoftware in Araçatuba, SP, Brazil.</p>
+        <p data-pt="Estou no Brasil.">I am based in Brazil.</p>
     </section>
-    
+
     <section id="projetos">
-        <h2><i class="fas fa-project-diagram"></i> Projects</h2>
+        <h2 data-pt="ls ~/projetos">ls ~/projects</h2>
         <div id="projects-container"></div>
     </section>
-    
+
     <section id="posts">
-        <h2><i class="fas fa-blog"></i> Posts</h2>
+        <h2 data-pt="ls ~/posts">ls ~/posts</h2>
         <div id="posts-container"></div>
     </section>
-    
+
     <section id="contact">
-        <h2><i class="fas fa-address-book"></i> Contact</h2>
+        <h2 data-pt="cat contato.txt">cat contact.txt</h2>
         <div class="social-links">
             <a href="https://www.linkedin.com/in/nat%C3%A3-nogueira-ferreira-631191263/" target="_blank">
                 <i class="fab fa-linkedin"></i> LinkedIn
@@ -50,7 +62,10 @@
             </a>
         </div>
     </section>
-    
+    </main>
+  </div>
+
+    <script src="src/scripts/i18n.js"></script>
     <script src="src/scripts/script.js"></script>
 </body>
 </html>

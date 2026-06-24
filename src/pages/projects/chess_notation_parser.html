@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Notation Parser - Development Progress</title>
+    <link rel="stylesheet" href="../../style/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/png" href="../../../assets/favicon.png" />
+</head>
+<body>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/projects/chess_notation_parser</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
+    <header>
+        <h1>Chess Notation Parser - Development Progress</h1>
+    </header>
+
+    <section>
+        <h2 data-pt="Visão Geral do Projeto">Project Overview</h2>
+        <p data-pt="O Chess Notation Parser é uma pequena biblioteca open-source escrita em Go que lê lances de xadrez em Notação Algébrica Padrão (SAN) e os transforma em uma representação estruturada e legível por máquina. O objetivo é aprender técnicas de parsing e as regras formais da notação de xadrez, construindo do zero um tokenizador para lances como <strong>Bxe4</strong>, <strong>e4</strong> ou <strong>Nf3</strong> — sem dependências externas.">Chess Notation Parser is a small open-source library written in Go that reads chess moves in Standard Algebraic Notation (SAN) and turns them into a structured, machine-readable representation. The goal is to learn parsing techniques and the formal rules behind chess notation by building a tokenizer for moves like <strong>Bxe4</strong>, <strong>e4</strong> or <strong>Nf3</strong> from scratch — without external dependencies.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Como Funciona">How It Works</h2>
+        <p data-pt="A string do lance é analisada da direita para a esquerda. Os dois últimos caracteres são sempre a casa de destino (coluna + linha), e o prefixo restante descreve a peça, a desambiguação opcional e a captura:">A move string is broken down from right to left. The last two characters are always the destination square (file + rank), and the remaining prefix describes the piece, optional disambiguation, and capture:</p>
+        <ul>
+            <li data-pt="<strong>Casa de destino:</strong> a coluna final (a–h) e a linha (1–8) são validadas e convertidas em uma coordenada baseada em zero (<code>a=0 .. h=7</code>, <code>1=0 .. 8=7</code>)."><strong>Destination square:</strong> the final file (a–h) and rank (1–8) are validated and converted into a 0-based coordinate (<code>a=0 .. h=7</code>, <code>1=0 .. 8=7</code>).</li>
+            <li data-pt="<strong>Detecção de captura:</strong> um <code>x</code> no fim do prefixo marca o lance como captura."><strong>Capture detection:</strong> a trailing <code>x</code> in the prefix flags the move as a capture.</li>
+            <li data-pt="<strong>Identificação da peça:</strong> o primeiro caractere é comparado com K, Q, R, B, N — qualquer outro é tratado como peão."><strong>Piece resolution:</strong> the leading character is matched against K, Q, R, B, N — anything else defaults to a pawn.</li>
+            <li data-pt="<strong>Coluna de origem:</strong> em capturas de peão como <code>exd5</code>, a coluna de origem é extraída do prefixo."><strong>Origin file:</strong> for pawn captures like <code>exd5</code>, the source file is extracted from the prefix.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 data-pt="Modelo de Dados">Core Data Model</h2>
+        <p data-pt="Todo lance analisado é reduzido a uma estrutura tipada, fácil de consumir por outros programas:">Every parsed move is reduced to a typed structure that is easy to consume from other programs:</p>
+        <ul>
+            <li data-pt="<strong>Piece:</strong> um enum de um byte (<code>P, N, B, R, Q, K</code>)."><strong>Piece:</strong> a single-byte enum (<code>P, N, B, R, Q, K</code>).</li>
+            <li data-pt="<strong>Square:</strong> um par coluna/linha, usando <code>-1</code> para marcar valores não especificados."><strong>Square:</strong> a file/rank pair, using <code>-1</code> to mark values that are not specified.</li>
+            <li data-pt="<strong>Move:</strong> agrupa a peça, a casa de origem, a casa de destino e a flag de captura."><strong>Move:</strong> bundles the piece, origin square, destination square and a capture flag.</li>
+        </ul>
+        <p data-pt="O tipo <code>Move</code> também reconstrói sua própria notação através de um método <code>toString()</code>, o que facilita testes de ida e volta.">The <code>Move</code> type also rebuilds its own notation through a <code>toString()</code> method, which makes round-trip testing straightforward.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Progresso Atual">Current Progress</h2>
+        <p data-pt="O parser já lida com os casos mais comuns da notação algébrica:">The parser already handles the most common cases of algebraic notation:</p>
+        <ul>
+            <li data-pt="Lances simples de peão e capturas de peão.">Basic pawn moves and pawn captures.</li>
+            <li data-pt="Lances de peças com e sem captura.">Piece moves with and without captures.</li>
+            <li data-pt="Desambiguação por coluna e validação de entrada com erros descritivos.">File-based disambiguation and input validation with descriptive errors.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 data-pt="Próximos Passos">Next Steps</h2>
+        <p data-pt="Melhorias planejadas para cobrir totalmente a notação SAN:">Planned improvements to reach full SAN coverage:</p>
+        <ul>
+            <li data-pt="Roque (<code>O-O</code> e <code>O-O-O</code>).">Castling (<code>O-O</code> and <code>O-O-O</code>).</li>
+            <li data-pt="Promoção de peão (ex.: <code>e8=Q</code>).">Pawn promotion (e.g. <code>e8=Q</code>).</li>
+            <li data-pt="Sufixos de xeque e xeque-mate (<code>+</code> e <code>#</code>).">Check and checkmate suffixes (<code>+</code> and <code>#</code>).</li>
+            <li data-pt="Desambiguação completa por linha/coluna e uma suíte de testes completa.">Full rank/file disambiguation and a complete test suite.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 data-pt="Acompanhe">Stay Updated</h2>
+        <p data-pt="Se você tem interesse em acompanhar o desenvolvimento do Chess Notation Parser, fique de olho nas próximas atualizações!">If you're interested in following the development of the Chess Notation Parser, stay tuned for future updates!</p>
+    </section>
+
+    <footer>
+        <button onclick="window.location.href='../../../index.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao início">Back to home</span></button>
+        <button onclick="window.open('https://github.com/nataferreiradev/chess_notation_parser', '_blank')">
+            <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
+        </button>
+    </footer>
+  </div>
+    <script src="../../scripts/i18n.js"></script>
+</body>
+</html>

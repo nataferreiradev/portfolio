@@ -6,49 +6,62 @@
     <title>My Own DBMS - Development Progress</title>
     <link rel="stylesheet" href="../../style/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <link rel="icon" type="image/png" href="../../../assets/favicon.png" />
 </head>
 <body>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/projects/my_dbms</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
     <header>
         <h1>My Own DBMS - Development Progress</h1>
     </header>
-    
+
     <section>
-        <h2>Project Overview</h2>
-        <p>My Own DBMS is a free and open-source database management system built using Go. The main objective is to develop a lightweight and efficient DBMS for learning purposes, focusing on SQL parsing, storage management, and query execution.</p>
+        <h2 data-pt="Visão Geral do Projeto">Project Overview</h2>
+        <p data-pt="O My Own DBMS é um sistema de gerenciamento de banco de dados gratuito e open-source feito em Go. O objetivo principal é desenvolver um DBMS leve e eficiente para fins de aprendizado, com foco em parsing de SQL, gerenciamento de armazenamento e execução de consultas.">My Own DBMS is a free and open-source database management system built using Go. The main objective is to develop a lightweight and efficient DBMS for learning purposes, focusing on SQL parsing, storage management, and query execution.</p>
     </section>
-    
+
     <section>
-        <h2>Current Progress</h2>
-        <p>So far, the project includes essential structures to create table files and parse SQL commands. The following components are already implemented:</p>
+        <h2 data-pt="Progresso Atual">Current Progress</h2>
+        <p data-pt="Até agora, o projeto inclui as estruturas essenciais para criar arquivos de tabela e analisar comandos SQL. Os seguintes componentes já estão implementados:">So far, the project includes essential structures to create table files and parse SQL commands. The following components are already implemented:</p>
         <ul>
-            <li><strong>SQL Sanitizer:</strong> Cleans and validates SQL input.</li>
-            <li><strong>Tokenizer:</strong> Breaks down SQL statements into meaningful tokens.</li>
-            <li><strong>Lexical Analyzer:</strong> Identifies keywords, identifiers, and syntax elements.</li>
+            <li data-pt="<strong>SQL Sanitizer:</strong> Limpa e valida a entrada SQL."><strong>SQL Sanitizer:</strong> Cleans and validates SQL input.</li>
+            <li data-pt="<strong>Tokenizer:</strong> Divide os comandos SQL em tokens significativos."><strong>Tokenizer:</strong> Breaks down SQL statements into meaningful tokens.</li>
+            <li data-pt="<strong>Analisador Léxico:</strong> Identifica palavras-chave, identificadores e elementos de sintaxe."><strong>Lexical Analyzer:</strong> Identifies keywords, identifiers, and syntax elements.</li>
         </ul>
-        <p>The next major component under development is the SQL Runner, which will execute queries.</p>
+        <p data-pt="O próximo grande componente em desenvolvimento é o SQL Runner, que executará as consultas.">The next major component under development is the SQL Runner, which will execute queries.</p>
     </section>
-    
+
     <section>
-        <h2>Next Steps</h2>
-        <p>The upcoming milestones for the project include:</p>
+        <h2 data-pt="Próximos Passos">Next Steps</h2>
+        <p data-pt="Os próximos marcos do projeto incluem:">The upcoming milestones for the project include:</p>
         <ul>
-            <li>Implementing data storage and retrieval for tables.</li>
-            <li>Developing query execution logic.</li>
-            <li>Enhancing the database file structure for performance optimization.</li>
+            <li data-pt="Implementar o armazenamento e a recuperação de dados das tabelas.">Implementing data storage and retrieval for tables.</li>
+            <li data-pt="Desenvolver a lógica de execução de consultas.">Developing query execution logic.</li>
+            <li data-pt="Aprimorar a estrutura dos arquivos do banco para otimizar a performance.">Enhancing the database file structure for performance optimization.</li>
         </ul>
     </section>
-    
+
     <section>
-        <h2>Stay Updated</h2>
-        <p>If you're interested in following the development of My Own DBMS, stay tuned for future updates!</p>
+        <h2 data-pt="Acompanhe">Stay Updated</h2>
+        <p data-pt="Se você tem interesse em acompanhar o desenvolvimento do My Own DBMS, fique de olho nas próximas atualizações!">If you're interested in following the development of My Own DBMS, stay tuned for future updates!</p>
     </section>
 
     <footer>
-        <button onclick="window.location.href='../index.html'">Back to Home</button>
+        <button onclick="window.location.href='../../../index.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao início">Back to home</span></button>
         <button onclick="window.open('https://github.com/nataferreiradev/my_dbms.git', '_blank')">
-            <i class="fab fa-github"></i> GitHub project
+            <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
         </button>
     </footer>
+  </div>
+    <script src="../../scripts/i18n.js"></script>
 </body>
 </html>

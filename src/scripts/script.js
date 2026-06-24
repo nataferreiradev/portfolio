@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
+    typeHeroName();
+
     const username = 'nataferreiradev';
     let tabNewsPostsCount = renderTabNewsPosts(username);
 
@@ -8,7 +10,15 @@ document.addEventListener('DOMContentLoaded', () => {
         {
             title: "My DMBS",
             description: "A free DBMS made with Go for study purposes.",
+            descriptionPt: "Um DBMS gratuito feito em Go para fins de estudo.",
             link: "src/pages/projects/my_dbms.html",
+            working: true,
+        },
+        {
+            title: "Chess Notation Parser",
+            description: "A Go parser that turns chess algebraic notation (e.g. Bxe4) into structured moves.",
+            descriptionPt: "Um parser em Go que transforma a notação algébrica de xadrez (ex.: Bxe4) em lances estruturados.",
+            link: "src/pages/projects/chess_notation_parser.html",
             working: true,
         }
     ];
@@ -39,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(projects.length === 0) {
         const noProjects = document.createElement('p');
         noProjects.textContent = 'No projects to show.';
+        noProjects.setAttribute('data-pt', 'Nenhum projeto para mostrar.');
         projectsSection.appendChild(noProjects);
     }
     projects.forEach(project => {
@@ -49,6 +60,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         projectTitle.textContent = project.title;
         projectDescription.textContent = project.description;
+        if (project.descriptionPt) {
+            projectDescription.setAttribute('data-en', project.description);
+            projectDescription.setAttribute('data-pt', project.descriptionPt);
+        }
         projectLink.href = project.link;
 
      if (project.working) {
@@ -56,8 +71,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const workingIcon = document.createElement('i');
             const workingText = document.createElement('span');
 
-            workingIcon.className = 'fas fa-tools'; 
+            workingIcon.className = 'fas fa-tools';
             workingText.textContent = 'In Progress';
+            workingText.setAttribute('data-en', 'In Progress');
+            workingText.setAttribute('data-pt', 'Em andamento');
 
             workingContainer.appendChild(workingText);
             workingContainer.appendChild(workingIcon);
@@ -69,6 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
         projectLink.appendChild(projectDiv);
         projectsSection.appendChild(projectLink);
     });
+
+    if (window.i18nApply) window.i18nApply();
 });
 function renderTabNewsPosts(username) {
     const postsContainer = document.getElementById('posts-container');
@@ -78,7 +97,9 @@ function renderTabNewsPosts(username) {
         if (posts.length === 0) {
             const noPosts = document.createElement('p');
             noPosts.textContent = 'No posts to show.';
+            noPosts.setAttribute('data-pt', 'Nenhum post para mostrar.');
             postsContainer.appendChild(noPosts);
+            if (window.i18nApply) window.i18nApply();
             return;
         }
 
@@ -138,4 +159,22 @@ function getTabNewsPosts(username) {
 
 function captalize(string) {
     return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+function typeHeroName() {
+    const heading = document.querySelector('.home-header h1');
+    if (!heading) return;
+
+    const fullText = heading.textContent.trim();
+    heading.textContent = '';
+
+    let i = 0;
+    const speed = 70;
+    (function type() {
+        if (i <= fullText.length) {
+            heading.textContent = fullText.slice(0, i);
+            i++;
+            setTimeout(type, speed);
+        }
+    })();
 }
