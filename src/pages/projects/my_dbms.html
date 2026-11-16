@@ -26,38 +26,65 @@
 
     <section>
         <h2 data-pt="Visão Geral do Projeto">Project Overview</h2>
-        <p data-pt="O My Own DBMS é um sistema de gerenciamento de banco de dados gratuito e open-source feito em Go. O objetivo principal é desenvolver um DBMS leve e eficiente para fins de aprendizado, com foco em parsing de SQL, gerenciamento de armazenamento e execução de consultas.">My Own DBMS is a free and open-source database management system built using Go. The main objective is to develop a lightweight and efficient DBMS for learning purposes, focusing on SQL parsing, storage management, and query execution.</p>
+        <p data-pt="O My Own DBMS é um banco de dados relacional escrito do zero em Go, open source e feito para estudo. Sem dependências externas: lexer, parser, formato em disco, índices, transações e servidor de rede são todos implementados no próprio projeto, com código pequeno o bastante para ler de cima a baixo.">My Own DBMS is a relational database written from scratch in Go, open source and built for learning. It has no external dependencies: the lexer, parser, on-disk format, indexes, transactions and network server are all implemented in the project itself, with code small enough to read top to bottom.</p>
     </section>
 
     <section>
-        <h2 data-pt="Progresso Atual">Current Progress</h2>
-        <p data-pt="Até agora, o projeto inclui as estruturas essenciais para criar arquivos de tabela e analisar comandos SQL. Os seguintes componentes já estão implementados:">So far, the project includes essential structures to create table files and parse SQL commands. The following components are already implemented:</p>
+        <h2 data-pt="O que já funciona">What already works</h2>
         <ul>
-            <li data-pt="<strong>SQL Sanitizer:</strong> Limpa e valida a entrada SQL."><strong>SQL Sanitizer:</strong> Cleans and validates SQL input.</li>
-            <li data-pt="<strong>Tokenizer:</strong> Divide os comandos SQL em tokens significativos."><strong>Tokenizer:</strong> Breaks down SQL statements into meaningful tokens.</li>
-            <li data-pt="<strong>Analisador Léxico:</strong> Identifica palavras-chave, identificadores e elementos de sintaxe."><strong>Lexical Analyzer:</strong> Identifies keywords, identifiers, and syntax elements.</li>
+            <li data-pt="&lt;strong&gt;Lexer e parser:&lt;/strong&gt; lexer escrito à mão e parser descendente recursivo que gera uma AST tipada, os dois com fuzzing."><strong>Lexer and parser:</strong> hand-written lexer and recursive descent parser producing a typed AST, both fuzzed.</li>
+            <li data-pt="&lt;strong&gt;SQL:&lt;/strong&gt; &lt;code&gt;CREATE/DROP TABLE&lt;/code&gt;, &lt;code&gt;INSERT&lt;/code&gt;, &lt;code&gt;SELECT&lt;/code&gt;, &lt;code&gt;UPDATE&lt;/code&gt;, &lt;code&gt;DELETE&lt;/code&gt;, &lt;code&gt;CREATE/DROP INDEX&lt;/code&gt; e &lt;code&gt;EXPLAIN&lt;/code&gt;, com &lt;code&gt;INT&lt;/code&gt;, &lt;code&gt;TEXT&lt;/code&gt;, &lt;code&gt;NOT NULL&lt;/code&gt;, &lt;code&gt;PRIMARY KEY&lt;/code&gt; e &lt;code&gt;UNIQUE&lt;/code&gt;."><strong>SQL:</strong> <code>CREATE/DROP TABLE</code>, <code>INSERT</code>, <code>SELECT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>CREATE/DROP INDEX</code> and <code>EXPLAIN</code>, with <code>INT</code>, <code>TEXT</code>, <code>NOT NULL</code>, <code>PRIMARY KEY</code> and <code>UNIQUE</code>.</li>
+            <li data-pt="&lt;strong&gt;Armazenamento:&lt;/strong&gt; páginas com slots, formato binário de registro com bitmap de NULL e endereços de linha estáveis."><strong>Storage:</strong> slotted pages, a binary record format with a NULL bitmap, and stable row ids.</li>
+            <li data-pt="&lt;strong&gt;Índices:&lt;/strong&gt; índices B+tree com chaves ordenáveis por bytes, usados para garantir as chaves e acelerar consultas."><strong>Indexes:</strong> B+tree indexes with byte-sortable keys, used to enforce keys and to speed up queries.</li>
+            <li data-pt="&lt;strong&gt;Transações:&lt;/strong&gt; todo comando é atômico, protegido por um rollback journal com recuperação após queda."><strong>Transactions:</strong> every command is atomic, protected by a rollback journal with crash recovery.</li>
+            <li data-pt="&lt;strong&gt;Planejamento:&lt;/strong&gt; lógica de três valores do SQL e um planner baseado em regras que escolhe varredura completa ou intervalo de índice."><strong>Query planning:</strong> SQL three-valued logic and a rule-based planner that picks a full scan or an index range.</li>
+            <li data-pt="&lt;strong&gt;Servidor:&lt;/strong&gt; um REPL e um servidor TCP concorrente que fala linhas de JSON."><strong>Server:</strong> a REPL and a concurrent TCP server speaking JSON lines.</li>
         </ul>
-        <p data-pt="O próximo grande componente em desenvolvimento é o SQL Runner, que executará as consultas.">The next major component under development is the SQL Runner, which will execute queries.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Artigos técnicos">Technical articles</h2>
+        <p data-pt="Uma série sobre como cada parte do banco funciona por dentro, com trechos do código real.">A series on how each part of the database works inside, with excerpts from the real code.</p>
+        <div class="article-list">
+            <a href="../articles/my_dbms/01-lexer-parser.html"><div>
+                <h3 data-pt="01. Do texto à AST: um lexer escrito à mão e um parser descendente recursivo">01. From text to AST: a hand-written lexer and recursive descent parser</h3>
+                <p data-pt="Como o my_dbms transforma &lt;code&gt;select nome from p where id=1;&lt;/code&gt; num valor Go tipado, sem gerador de parser, e como o fuzzing impede que ele quebre.">How my_dbms turns <code>select nome from p where id=1;</code> into a typed Go value, without parser generators, and how fuzzing keeps it from crashing.</p>
+            </div></a>
+            <a href="../articles/my_dbms/02-pages-and-records.html"><div>
+                <h3 data-pt="02. Páginas com slots e endereços estáveis: o formato em disco">02. Slotted pages and stable row ids: the on-disk format</h3>
+                <p data-pt="Por que o projeto trocou arquivos CSV por páginas de tamanho fixo, como uma linha vira bytes, e por que apagar uma linha deixa um buraco em vez de empurrar as vizinhas.">Why the project moved from CSV files to fixed-size pages, how a row becomes bytes, and why a deleted row leaves a hole instead of shifting its neighbors.</p>
+            </div></a>
+            <a href="../articles/my_dbms/03-btree-and-keys.html"><div>
+                <h3 data-pt="03. Uma B+tree do zero, e chaves que se ordenam como bytes">03. A B+tree from scratch, and keys that sort as bytes</h3>
+                <p data-pt="Como os índices são guardados, por que a raiz nunca muda de lugar, e o truque de codificação que deixa a árvore comparar chaves sem conhecer os tipos das colunas.">How indexes are stored, why the root never moves, and the byte-encoding trick that lets the tree compare keys without knowing column types.</p>
+            </div></a>
+            <a href="../articles/my_dbms/04-transactions-journal.html"><div>
+                <h3 data-pt="04. Tudo ou nada: transações e um rollback journal">04. All or nothing: transactions and a rollback journal</h3>
+                <p data-pt="Como um INSERT de várias linhas que falha no meio não deixa rastro, e como o banco se recupera se o processo morrer no meio da gravação das páginas.">How a multi-row INSERT that fails halfway leaves no trace, and how the database recovers if the process dies in the middle of writing pages to disk.</p>
+            </div></a>
+            <a href="../articles/my_dbms/05-where-and-planner.html"><div>
+                <h3 data-pt="05. Lógica de três valores e um planner baseado em regras">05. Three-valued logic and a rule-based query planner</h3>
+                <p data-pt="Compilando o WHERE em closures, por que NULL = NULL não é verdadeiro, e como o planner decide entre varredura completa e um intervalo de índice.">Compiling a WHERE clause into closures, why NULL = NULL is not true, and how the planner decides between a full scan and an index range.</p>
+            </div></a>
+            <a href="../articles/my_dbms/06-tcp-server.html"><div>
+                <h3 data-pt="06. Um servidor TCP com protocolo de linhas JSON e trava de leitores e escritor">06. A TCP server with a JSON-lines protocol and a readers-writer lock</h3>
+                <p data-pt="Expondo o banco pela rede em cerca de 140 linhas de Go: uma goroutine por conexão, um protocolo que dá para testar com nc, e por que a trava é por comando.">Exposing the database over the network in about 140 lines of Go: one goroutine per connection, a protocol you can test with nc, and why the lock is per command.</p>
+            </div></a>
+        </div>
     </section>
 
     <section>
         <h2 data-pt="Próximos Passos">Next Steps</h2>
-        <p data-pt="Os próximos marcos do projeto incluem:">The upcoming milestones for the project include:</p>
         <ul>
-            <li data-pt="Implementar o armazenamento e a recuperação de dados das tabelas.">Implementing data storage and retrieval for tables.</li>
-            <li data-pt="Desenvolver a lógica de execução de consultas.">Developing query execution logic.</li>
-            <li data-pt="Aprimorar a estrutura dos arquivos do banco para otimizar a performance.">Enhancing the database file structure for performance optimization.</li>
+            <li data-pt="&lt;code&gt;ORDER BY&lt;/code&gt;, &lt;code&gt;JOIN&lt;/code&gt; e funções de agregação."><code>ORDER BY</code>, <code>JOIN</code> and aggregate functions.</li>
+            <li data-pt="Um mapa de espaço livre, para o INSERT reaproveitar espaço de qualquer página.">A free space map, so inserts can reuse space from any page.</li>
+            <li data-pt="Um write-ahead log e MVCC, para leitores e escritores pararem de se bloquear.">A write-ahead log and MVCC, so readers and writers stop blocking each other.</li>
         </ul>
-    </section>
-
-    <section>
-        <h2 data-pt="Acompanhe">Stay Updated</h2>
-        <p data-pt="Se você tem interesse em acompanhar o desenvolvimento do My Own DBMS, fique de olho nas próximas atualizações!">If you're interested in following the development of My Own DBMS, stay tuned for future updates!</p>
     </section>
 
     <footer>
         <button onclick="window.location.href='../../../index.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao início">Back to home</span></button>
-        <button onclick="window.open('https://github.com/nataferreiradev/my_dbms.git', '_blank')">
+        <button onclick="window.open('https://github.com/nataferreiradev/my_dbms', '_blank')">
             <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
         </button>
     </footer>
