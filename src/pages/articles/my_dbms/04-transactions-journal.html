@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All or nothing: transactions and a rollback journal - my_dbms</title>
+    <meta name="description" content="How a multi-row INSERT that fails halfway leaves no trace, and how the database recovers if the process dies in the middle of writing pages to disk.">
+    <link rel="stylesheet" href="../../../style/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/png" href="../../../../assets/favicon.png" />
+</head>
+<body>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/articles/my_dbms/04-transactions-journal</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
+    <header class="article-header">
+        <p class="article-kicker"><a href="../../projects/my_dbms.html">my_dbms</a> · <span data-pt="artigo 4 de 6">article 4 of 6</span></p>
+        <h1 data-pt="Tudo ou nada: transações e um rollback journal">All or nothing: transactions and a rollback journal</h1>
+        <p class="article-lead" data-pt="Como um INSERT de várias linhas que falha no meio não deixa rastro, e como o banco se recupera se o processo morrer no meio da gravação das páginas.">How a multi-row INSERT that fails halfway leaves no trace, and how the database recovers if the process dies in the middle of writing pages to disk.</p>
+        <p class="article-files"><span data-pt="Código:">Code:</span> <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/storage/tx.go" target="_blank"><code>internal/storage/tx.go</code></a></p>
+    </header>
+
+    <section>
+        <h2 data-pt="O problema">The problem</h2>
+        <p data-pt="Um único comando SQL pode mexer em vários arquivos: a tabela, todos os índices dela e às vezes o catálogo. Se um &lt;code&gt;INSERT&lt;/code&gt; de 10 linhas bate numa chave repetida na sétima, ou a luz acaba depois de gravar a página da tabela mas antes da página do índice, o banco fica inconsistente: um índice apontando para uma linha que não existe, ou uma linha faltando no índice.">A single SQL command can touch several files: the table, every index on it, and sometimes the catalog. If an <code>INSERT</code> of 10 rows hits a duplicate key on row 7, or the power goes out after the table page was written but before the index page was, the database is left inconsistent: an index pointing at a row that doesn't exist, or a row missing from its index.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Páginas alteradas ficam na memória">Dirty pages stay in memory</h2>
+        <p data-pt="Toda operação do storage roda dentro de uma &lt;code&gt;tx&lt;/code&gt;. Ela abre os arquivos que precisa quando precisa, lê as páginas pelo número e guarda cada página que altera num mapa &lt;code&gt;dirty&lt;/code&gt;, sem tocar no disco. Leituras dentro da mesma transação veem primeiro a versão alterada.">Every storage operation runs inside a <code>tx</code>. It opens the files it needs lazily, reads pages by number and keeps every page it modifies in a <code>dirty</code> map, without touching the disk. Reads inside the same transaction see the dirty version first.</p>
+        <div class="code-block"><span class="code-label">internal/storage/tx.go</span><pre><code>type tx struct {
+    db    *DB
+    files map[string]*txFile
+}
+
+type txFile struct {
+    f     *os.File
+    pages int            // pages on disk, counting page 0
+    size  int            // pages including the ones created in this tx
+    dirty map[int][]byte // modified pages, by number
+}</code></pre></div>
+        <p data-pt="Isso deixa o &lt;strong&gt;rollback de graça&lt;/strong&gt;: se algo falha, a transação só fecha os arquivos e o mapa vai para o coletor de lixo. Nada chegou ao disco, então não há o que desfazer.">That makes <strong>rollback free</strong>: if anything fails, the transaction just closes its files and the dirty map is garbage collected. Nothing reached the disk, so there is nothing to undo.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Commit em três passos">Commit in three steps</h2>
+        <p data-pt="Gravar as páginas alteradas é onde uma queda machuca. O my_dbms usa um &lt;strong&gt;rollback journal&lt;/strong&gt;, a mesma ideia do modo padrão do SQLite:">Writing the dirty pages is where crashes hurt. my_dbms uses a <strong>rollback journal</strong>, the same idea as SQLite's default mode:</p>
+        <ul>
+            <li data-pt="&lt;strong&gt;1. Guardar os originais.&lt;/strong&gt; Copiar a versão atual de cada página que vai mudar para o &lt;code&gt;_journal&lt;/code&gt;, junto com o tamanho original de cada arquivo e um CRC32 no fim. &lt;code&gt;fsync&lt;/code&gt; no journal e na pasta."><strong>1. Save the originals.</strong> Copy the current version of every page about to change into <code>_journal</code>, together with each file's original length and a CRC32 at the end. <code>fsync</code> the journal and the directory.</li>
+            <li data-pt="&lt;strong&gt;2. Gravar as páginas novas&lt;/strong&gt; nos arquivos da tabela, dos índices e do catálogo, e &lt;code&gt;fsync&lt;/code&gt; em cada um."><strong>2. Write the new pages</strong> into the table, index and catalog files, and <code>fsync</code> each one.</li>
+            <li data-pt="&lt;strong&gt;3. Apagar o &lt;code&gt;_journal&lt;/code&gt;.&lt;/strong&gt; Esse é o ponto do commit: no instante em que o journal some, o estado novo é o oficial."><strong>3. Delete <code>_journal</code>.</strong> This is the commit point: the moment the journal disappears, the new state is official.</li>
+        </ul>
+        <div class="code-block"><span class="code-label">_journal format (numbers are uvarint)</span><pre><code>&quot;MRNJ&quot; | file count |
+  per file: name | original page count | saved page count |
+            (page number | original 4 KB)... |
+crc32 over everything above</code></pre></div>
+        <p data-pt="Páginas criadas na transação (depois do fim original do arquivo) não são copiadas: desfazer é só cortar o arquivo no tamanho original. O &lt;code&gt;fsync&lt;/code&gt; na pasta também importa, porque criar ou apagar um arquivo só é durável depois que a entrada da pasta vai para o disco.">Pages created during the transaction (past the original end of the file) are not copied: undoing them is just truncating the file back to its original length. The <code>fsync</code> on the directory matters too, since creating or removing a file is only durable once the directory entry is flushed.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Recuperação na abertura">Recovery on open</h2>
+        <p data-pt="O &lt;code&gt;Open&lt;/code&gt; procura o &lt;code&gt;_journal&lt;/code&gt; antes de qualquer coisa. O CRC32 diz em que passo a queda aconteceu:"><code>Open</code> looks for <code>_journal</code> before doing anything else. The CRC32 tells which step the crash happened in:</p>
+        <ul>
+            <li data-pt="&lt;strong&gt;Queda no passo 1:&lt;/strong&gt; o journal está incompleto, o checksum não bate e os arquivos de dados nunca foram tocados. O journal é só apagado."><strong>Crash during step 1:</strong> the journal is incomplete, the checksum fails, and the data files were never touched. The journal is simply deleted.</li>
+            <li data-pt="&lt;strong&gt;Queda no passo 2:&lt;/strong&gt; o journal é válido, e os arquivos podem ter uma mistura de páginas velhas e novas. Cada página salva é regravada, cada arquivo é cortado no tamanho original e o journal é apagado. O banco fica exatamente como antes do comando."><strong>Crash during step 2:</strong> the journal is valid, and the files may hold a mix of old and new pages. Every saved page is written back, every file is truncated to its original size, and the journal is deleted. The database is exactly as it was before the command.</li>
+            <li data-pt="&lt;strong&gt;Queda depois do passo 3:&lt;/strong&gt; sem journal, o commit está completo."><strong>Crash after step 3:</strong> no journal, the commit is complete.</li>
+        </ul>
+        <p data-pt="Como uma transação cobre todos os arquivos que um comando mexe, a linha e as entradas dela nos índices sempre mudam juntas. A recuperação também é reaproveitada em tempo de execução: se o passo 2 falha com erro de I/O, o &lt;code&gt;commit&lt;/code&gt; roda o mesmo &lt;code&gt;recoverJournal&lt;/code&gt; antes de devolver o erro.">Because one transaction covers every file a command touches, a row and its index entries always change together. Recovery is also reused at runtime: if step 2 fails with an I/O error, <code>commit</code> runs the same <code>recoverJournal</code> before returning the error.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="DDL e suas bordas">DDL and its edges</h2>
+        <p data-pt="Criar uma tabela ou índice cria um arquivo novo, que o journal não sabe descrever. Por isso o &lt;code&gt;CREATE&lt;/code&gt; grava primeiro o arquivo novo (com &lt;code&gt;fsync&lt;/code&gt;) e só depois adiciona a linha no catálogo, numa transação. Uma queda no meio deixa, no pior caso, um arquivo que o catálogo não enxerga. Ele nunca é sobrescrito em silêncio: criar um objeto com esse nome dá erro até alguém remover o arquivo. O &lt;code&gt;DROP&lt;/code&gt; faz a ordem inversa: tira do catálogo e depois apaga os arquivos.">Creating a table or index creates a new file, which the journal can't describe. So <code>CREATE</code> writes the new file first (with <code>fsync</code>) and only then adds the catalog row in a transaction. A crash in between leaves, at worst, a file the catalog doesn't know about. It is never silently overwritten: creating an object with that name fails until someone removes the file. <code>DROP</code> does the opposite order: remove from the catalog, then delete the files.</p>
+        <p data-pt="O desenho aceita várias transações de leitura ao mesmo tempo, mas só uma de escrita, porque cada uma guarda as próprias páginas alteradas. Garantir isso é trabalho de quem chama, e é o que a trava do servidor TCP faz. Um write-ahead log (WAL) permitiria leitores e um escritor ao mesmo tempo; isso e MVCC são os próximos passos naturais.">The design allows many concurrent read transactions but only one writer, since each writer keeps its own private dirty pages. Enforcing that is the caller's job, which is what the TCP server's lock does. A write-ahead log (WAL) would allow readers and a writer at the same time; that and MVCC are natural next steps.</p>
+    </section>
+
+    <nav class="article-nav" aria-label="Articles">
+        <a class="nav-prev" href="03-btree-and-keys.html"><span class="nav-dir" data-pt="← anterior">← previous</span><strong data-pt="Uma B+tree do zero, e chaves que se ordenam como bytes">A B+tree from scratch, and keys that sort as bytes</strong></a>
+        <a class="nav-next" href="05-where-and-planner.html"><span class="nav-dir" data-pt="próximo →">next →</span><strong data-pt="Lógica de três valores e um planner baseado em regras">Three-valued logic and a rule-based query planner</strong></a>
+    </nav>
+
+    <footer>
+        <button onclick="window.location.href='../../projects/my_dbms.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao projeto">Back to the project</span></button>
+        <button onclick="window.open('https://github.com/nataferreiradev/my_dbms', '_blank')">
+            <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
+        </button>
+    </footer>
+  </div>
+    <script src="../../../scripts/i18n.js"></script>
+</body>
+</html>

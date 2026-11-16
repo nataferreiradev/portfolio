@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slotted pages and stable row ids: the on-disk format - my_dbms</title>
+    <meta name="description" content="Why the project moved from CSV files to fixed-size pages, how a row becomes bytes, and why a deleted row leaves a hole instead of shifting its neighbors.">
+    <link rel="stylesheet" href="../../../style/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/png" href="../../../../assets/favicon.png" />
+</head>
+<body>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/articles/my_dbms/02-pages-and-records</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
+    <header class="article-header">
+        <p class="article-kicker"><a href="../../projects/my_dbms.html">my_dbms</a> · <span data-pt="artigo 2 de 6">article 2 of 6</span></p>
+        <h1 data-pt="Páginas com slots e endereços estáveis: o formato em disco">Slotted pages and stable row ids: the on-disk format</h1>
+        <p class="article-lead" data-pt="Por que o projeto trocou arquivos CSV por páginas de tamanho fixo, como uma linha vira bytes, e por que apagar uma linha deixa um buraco em vez de empurrar as vizinhas.">Why the project moved from CSV files to fixed-size pages, how a row becomes bytes, and why a deleted row leaves a hole instead of shifting its neighbors.</p>
+        <p class="article-files"><span data-pt="Código:">Code:</span> <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/storage/page.go" target="_blank"><code>internal/storage/page.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/storage/heap.go" target="_blank"><code>internal/storage/heap.go</code></a></p>
+    </header>
+
+    <section>
+        <h2 data-pt="Por que páginas">Why pages</h2>
+        <p data-pt="As primeiras versões guardavam cada tabela num arquivo CSV. É fácil de ler, mas toda escrita reescrevia o arquivo inteiro, e não havia como apontar para &quot;a linha 42&quot; sem varrer tudo. Bancos como SQLite e PostgreSQL resolvem isso dividindo o arquivo em &lt;strong&gt;páginas&lt;/strong&gt; de tamanho fixo: a página N começa no byte &lt;code&gt;N × page_size&lt;/code&gt;, então ler uma página é um único &lt;code&gt;ReadAt&lt;/code&gt;, e uma escrita mexe só nas páginas que mudaram.">Early versions stored each table as a CSV file. It is easy to read, but every write rewrote the whole file, and there was no way to point at "row 42" without scanning. Databases like SQLite and PostgreSQL solve this by splitting files into fixed-size <strong>pages</strong>: page N starts at byte <code>N × page_size</code>, so reading one page is a single <code>ReadAt</code>, and a write touches only the pages that changed.</p>
+        <p data-pt="A página 0 de todo arquivo &lt;code&gt;.mari&lt;/code&gt; é um cabeçalho: o magic &lt;code&gt;MRNA&lt;/code&gt;, a versão do formato e o tamanho da página. Abrir um arquivo com outro tamanho de página, ou um CSV antigo, dá erro em vez de devolver lixo.">Page 0 of every <code>.mari</code> file is a header: the magic <code>MRNA</code>, a format version and the page size. Opening a file with a different page size, or an old CSV file, fails loudly instead of returning garbage.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Anatomia de uma página com slots">Anatomy of a slotted page</h2>
+        <p data-pt="Registros têm tamanho variável, então a página não pode ser um array de células fixas. Em vez disso, um pequeno &lt;strong&gt;array de slots&lt;/strong&gt; cresce do começo da página e os registros crescem do fim. Cada slot tem 4 bytes (offset e tamanho), e a página está cheia quando os dois se encontram no meio.">Records have variable length, so a page can't be an array of fixed cells. Instead, a small <strong>slot array</strong> grows from the start of the page and the records grow from the end. Each slot is 4 bytes (offset and length), and the page is full when the two meet in the middle.</p>
+        <div class="code-block"><span class="code-label">layout</span><pre><code>page N
+┌──────────────────────────────────────────────────────────────┐
+│ kind | – | slot count | records start | link | slot 0 …     │  slots grow →
+│                                                              │
+│                        free space                            │
+│                                                              │
+│                      … | record 1 | record 0                 │  ← records grow
+└──────────────────────────────────────────────────────────────┘
+header: 10 bytes, little endian       slot: offset (u16) + size (u16)</code></pre></div>
+        <p data-pt="O byte de &lt;strong&gt;tipo&lt;/strong&gt; diz o que a página guarda: registros de tabela (1), folha de B+tree (2) ou nó interno de B+tree (3). Tabelas e índices usam exatamente o mesmo código de página, o que deixou a B+tree pequena. Como os offsets são &lt;code&gt;uint16&lt;/code&gt;, a página vai até 32 KB; o padrão é 4 KB, configurável no &lt;code&gt;my_dbms.conf&lt;/code&gt;.">The <strong>kind</strong> byte tells what the page holds: heap records (1), a B+tree leaf (2) or a B+tree internal node (3). Tables and indexes share the exact same page code, which kept the B+tree implementation small. Since offsets are <code>uint16</code>, pages top out at 32 KB; the default is 4 KB, configurable in <code>my_dbms.conf</code>.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Uma linha em bytes">A row in bytes</h2>
+        <p data-pt="Um registro é um bitmap de NULL seguido dos valores não nulos, guiado pelos tipos das colunas. &lt;code&gt;INT&lt;/code&gt; são 8 bytes fixos (int64); &lt;code&gt;TEXT&lt;/code&gt; é o tamanho em uvarint seguido dos bytes. Como o tamanho vem antes, não existe escape nenhum: o texto pode ter vírgula, aspas ou quebra de linha, que era uma dor de cabeça constante na época do CSV.">A record is a NULL bitmap followed by the non-NULL values, guided by the column types. <code>INT</code> is a fixed 8-byte int64; <code>TEXT</code> is a uvarint length followed by the raw bytes. Because the length comes first, there is no escaping at all: a text can contain commas, quotes or newlines, which was a constant headache in the CSV days.</p>
+        <div class="code-block"><span class="code-label">record encoding</span><pre><code>-- pessoas (id INT, nome TEXT, email TEXT)
+INSERT INTO pessoas VALUES (1, &#x27;Ana&#x27;, NULL);
+
+04                          NULL bitmap 0000_0100: column 2 (email) is NULL
+01 00 00 00 00 00 00 00     id = 1   (int64, little endian)
+03 41 6E 61                 nome = &quot;Ana&quot;  (uvarint length 3 + bytes)
+                            email takes no space at all</code></pre></div>
+        <p data-pt="Um registro precisa caber numa página vazia: no máximo &lt;code&gt;page_size − 14&lt;/code&gt; bytes (cabeçalho da página mais um slot). Linhas maiores são recusadas com erro antes de qualquer gravação. Páginas de overflow, como o TOAST do PostgreSQL, são um passo possível no futuro.">A record must fit in an empty page: at most <code>page_size − 14</code> bytes (page header plus one slot). Larger rows are rejected with an error before anything is written. Overflow pages, like PostgreSQL's TOAST, are a possible future step.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="RID: um endereço que não pode mudar">RID: an address that must not move</h2>
+        <p data-pt="Cada linha tem um &lt;strong&gt;RID&lt;/strong&gt; (row id): o par &lt;code&gt;(página, slot)&lt;/code&gt;, como o &lt;code&gt;ctid&lt;/code&gt; do PostgreSQL. Os índices guardam RIDs para achar as linhas, então o código se esforça para que eles não mudem:">Each row has a <strong>RID</strong> (row id): the pair <code>(page, slot)</code>, like PostgreSQL's <code>ctid</code>. Indexes store RIDs to find rows, so the code goes out of its way to keep them stable:</p>
+        <ul>
+            <li data-pt="&lt;strong&gt;DELETE&lt;/strong&gt; não remonta a página. Ele marca o slot como morto (tamanho 0); os bytes do registro viram um buraco."><strong>DELETE</strong> doesn't repack the page. It marks the slot as dead (length 0); the record's bytes become a hole.</li>
+            <li data-pt="&lt;strong&gt;UPDATE&lt;/strong&gt; regrava o registro no mesmo slot. Só se a versão nova não couber, mesmo juntando os buracos, a linha muda de página e ganha outro RID (e todos os índices são atualizados na mesma transação)."><strong>UPDATE</strong> rewrites the record in the same slot. Only if the new version doesn't fit, even after reclaiming holes, does the row move to another page and get a new RID (and every index is updated in the same transaction).</li>
+            <li data-pt="&lt;strong&gt;Compactar&lt;/strong&gt; junta os registros para unir os buracos, mas não renumera os slots. Só os offsets dentro dos slots mudam."><strong>Compaction</strong> slides records together to merge the holes, but keeps slot numbers untouched. Only the offsets inside the slots change.</li>
+            <li data-pt="&lt;strong&gt;INSERT&lt;/strong&gt; reaproveita um slot morto quando acha, e só tenta a última página. Um mapa de espaço livre está na lista de pendências."><strong>INSERT</strong> reuses a dead slot when it finds one, and only tries the last page. A free space map is on the to-do list.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 data-pt="O catálogo é só mais uma tabela">The catalog is just another table</h2>
+        <p data-pt="O próprio schema mora no &lt;code&gt;_catalog.mari&lt;/code&gt;, no mesmo formato das tabelas do usuário, com uma linha por objeto e uma coluna &lt;code&gt;type&lt;/code&gt; como discriminador (&lt;code&gt;table&lt;/code&gt;, &lt;code&gt;primary_key&lt;/code&gt;, &lt;code&gt;unique&lt;/code&gt;, &lt;code&gt;index&lt;/code&gt;). Como o schema do catálogo é fixo no código, ele pode ser lido com SQL comum: &lt;code&gt;SELECT * FROM _catalog;&lt;/code&gt;. Outras três tabelas do sistema, &lt;code&gt;_settings&lt;/code&gt;, &lt;code&gt;_tables&lt;/code&gt; e &lt;code&gt;_indexes&lt;/code&gt;, nem existem em disco: as linhas são montadas na memória a partir do estado do banco, como as views &lt;code&gt;pg_settings&lt;/code&gt; do PostgreSQL.">The schema itself lives in <code>_catalog.mari</code>, stored in the same format as user tables, with one row per object and a <code>type</code> column as discriminator (<code>table</code>, <code>primary_key</code>, <code>unique</code>, <code>index</code>). Since the catalog's own schema is hard-coded, it can be read with plain SQL: <code>SELECT * FROM _catalog;</code>. Three more system tables, <code>_settings</code>, <code>_tables</code> and <code>_indexes</code>, are not on disk at all: their rows are built in memory from the database state, like PostgreSQL's <code>pg_settings</code> views.</p>
+        <div class="code-block"><span class="code-label">REPL</span><pre><code>my_dbms&gt; SELECT * FROM _catalog;
+type        | name              | table_name | definition
+------------+-------------------+------------+--------------------------------------
+table       | pessoas           | pessoas    | id INT NOT NULL,email TEXT,nome TEXT
+primary_key | pessoas_pkey      | pessoas    | id
+unique      | pessoas_email_key | pessoas    | email
+index       | pessoas_nome      | pessoas    | nome</code></pre></div>
+    </section>
+
+    <nav class="article-nav" aria-label="Articles">
+        <a class="nav-prev" href="01-lexer-parser.html"><span class="nav-dir" data-pt="← anterior">← previous</span><strong data-pt="Do texto à AST: um lexer escrito à mão e um parser descendente recursivo">From text to AST: a hand-written lexer and recursive descent parser</strong></a>
+        <a class="nav-next" href="03-btree-and-keys.html"><span class="nav-dir" data-pt="próximo →">next →</span><strong data-pt="Uma B+tree do zero, e chaves que se ordenam como bytes">A B+tree from scratch, and keys that sort as bytes</strong></a>
+    </nav>
+
+    <footer>
+        <button onclick="window.location.href='../../projects/my_dbms.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao projeto">Back to the project</span></button>
+        <button onclick="window.open('https://github.com/nataferreiradev/my_dbms', '_blank')">
+            <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
+        </button>
+    </footer>
+  </div>
+    <script src="../../../scripts/i18n.js"></script>
+</body>
+</html>

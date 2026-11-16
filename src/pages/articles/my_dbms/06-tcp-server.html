@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A TCP server with a JSON-lines protocol and a readers-writer lock - my_dbms</title>
+    <meta name="description" content="Exposing the database over the network in about 140 lines of Go: one goroutine per connection, a protocol you can test with nc, and why the lock is per command.">
+    <link rel="stylesheet" href="../../../style/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/png" href="../../../../assets/favicon.png" />
+</head>
+<body>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/articles/my_dbms/06-tcp-server</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
+    <header class="article-header">
+        <p class="article-kicker"><a href="../../projects/my_dbms.html">my_dbms</a> · <span data-pt="artigo 6 de 6">article 6 of 6</span></p>
+        <h1 data-pt="Um servidor TCP com protocolo de linhas JSON e trava de leitores e escritor">A TCP server with a JSON-lines protocol and a readers-writer lock</h1>
+        <p class="article-lead" data-pt="Expondo o banco pela rede em cerca de 140 linhas de Go: uma goroutine por conexão, um protocolo que dá para testar com nc, e por que a trava é por comando.">Exposing the database over the network in about 140 lines of Go: one goroutine per connection, a protocol you can test with nc, and why the lock is per command.</p>
+        <p class="article-files"><span data-pt="Código:">Code:</span> <a href="https://github.com/nataferreiradev/my_dbms/blob/main/cmd/my_dbms/server.go" target="_blank"><code>cmd/my_dbms/server.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/cmd/my_dbms/main.go" target="_blank"><code>cmd/my_dbms/main.go</code></a></p>
+    </header>
+
+    <section>
+        <h2 data-pt="Um protocolo que dá para digitar">A protocol you can type</h2>
+        <p data-pt="Com &lt;code&gt;-listen&lt;/code&gt;, o mesmo executável que roda o REPL vira servidor. O protocolo é de texto de propósito: o cliente manda um comando por linha e recebe exatamente uma linha de JSON por comando. Não precisa de biblioteca cliente para testar.">With <code>-listen</code>, the same binary that runs the REPL becomes a server. The protocol is deliberately text-based: the client sends one command per line and receives exactly one line of JSON per command. No client library is needed to try it.</p>
+        <div class="code-block"><span class="code-label">nc</span><pre><code>$ go run ./cmd/my_dbms -listen localhost:4321
+$ nc localhost 4321
+→ SELECT nome FROM p WHERE id = 1;
+← {&quot;output&quot;:&quot;nome\n----\nAna\n(1 linha)&quot;,&quot;columns&quot;:[{&quot;name&quot;:&quot;nome&quot;,&quot;type&quot;:&quot;TEXT&quot;}],&quot;rows&quot;:[[&quot;Ana&quot;]]}
+→ DROP TABLE nada;
+← {&quot;error&quot;:&quot;tabela \&quot;nada\&quot; não existe&quot;}
+→
+← {}
+→ quit</code></pre></div>
+        <ul>
+            <li data-pt="&lt;code&gt;output&lt;/code&gt; é a mesma tabela alinhada que o REPL imprime, então um cliente simples pode só mostrar."><code>output</code> is the same aligned table the REPL prints, so a dumb client can just show it.</li>
+            <li data-pt="Um &lt;code&gt;SELECT&lt;/code&gt; também traz &lt;code&gt;columns&lt;/code&gt; e &lt;code&gt;rows&lt;/code&gt; para um cliente mais esperto (como uma interface web) montar a própria tabela. As células são &lt;code&gt;[]*string&lt;/code&gt; no Go, então o &lt;code&gt;NULL&lt;/code&gt; do SQL vira &lt;code&gt;null&lt;/code&gt; no JSON naturalmente.">A <code>SELECT</code> also carries <code>columns</code> and <code>rows</code> so a smarter client (like a web UI) can render its own table. Cells are <code>[]*string</code> in Go, so SQL <code>NULL</code> naturally becomes JSON <code>null</code>.</li>
+            <li data-pt="Uma linha vazia também recebe &lt;code&gt;{}&lt;/code&gt;, para um cliente que espera uma resposta por linha nunca ficar travado.">An empty line still gets <code>{}</code>, so a client waiting for one response per line never hangs.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 data-pt="Uma goroutine por conexão">One goroutine per connection</h2>
+        <p data-pt="O &lt;code&gt;serve&lt;/code&gt; aceita conexões num loop e entrega cada uma para &lt;code&gt;go s.handle(conn)&lt;/code&gt;. Cada handler envolve a conexão num &lt;code&gt;bufio.Scanner&lt;/code&gt; limitado a 1 MB por linha (para um cliente não fazer o servidor acumular sem fim) e num &lt;code&gt;json.Encoder&lt;/code&gt;, cujo &lt;code&gt;Encode&lt;/code&gt; já escreve um valor seguido de quebra de linha."><code>serve</code> accepts connections in a loop and hands each one to <code>go s.handle(conn)</code>. Each handler wraps the connection in a <code>bufio.Scanner</code> capped at 1 MB per line (so a client can't make the server buffer forever) and a <code>json.Encoder</code>, whose <code>Encode</code> conveniently writes one value followed by a newline.</p>
+        <div class="code-block"><span class="code-label">cmd/my_dbms/server.go</span><pre><code>scanner := bufio.NewScanner(conn)
+scanner.Buffer(nil, maxLine)   // 1 MB
+enc := json.NewEncoder(conn)
+for scanner.Scan() {
+    line := strings.TrimSpace(scanner.Text())
+    var resp response
+    switch line {
+    case &quot;&quot;:
+    case &quot;exit&quot;, &quot;quit&quot;:
+        return
+    default:
+        resp = s.execute(line)
+    }
+    if err := enc.Encode(resp); err != nil {
+        return
+    }
+}</code></pre></div>
+        <p data-pt="Desligar é só fechar o listener: o &lt;code&gt;Accept&lt;/code&gt; devolve &lt;code&gt;net.ErrClosed&lt;/code&gt; e o &lt;code&gt;serve&lt;/code&gt; devolve &lt;code&gt;nil&lt;/code&gt;. Os testes usam exatamente isso para subir um servidor na porta 0 e parar sem sujeira.">Shutting down is just closing the listener: <code>Accept</code> returns <code>net.ErrClosed</code> and <code>serve</code> returns <code>nil</code>. The tests use exactly that to start a server on port 0 and stop it cleanly.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Por que a trava é por comando">Why the lock is per command</h2>
+        <p data-pt="Todas as conexões usam o mesmo &lt;code&gt;storage.DB&lt;/code&gt;, protegido por um único &lt;code&gt;sync.RWMutex&lt;/code&gt;. Um &lt;code&gt;SELECT&lt;/code&gt; pega a trava de leitura, então vários rodam em paralelo; qualquer outro comando pega a trava de escrita e roda sozinho. Isso bate com a regra do próprio storage: quantas transações de leitura quiser, no máximo uma de escrita.">All connections share one <code>storage.DB</code>, guarded by a single <code>sync.RWMutex</code>. A <code>SELECT</code> takes the read lock, so many of them run in parallel; any other command takes the write lock and runs alone. That matches the storage's own rule: any number of read transactions, at most one writer.</p>
+        <div class="code-block"><span class="code-label">cmd/my_dbms/server.go</span><pre><code>if sel, ok := stmt.(*parser.Select); ok {
+    s.mu.RLock()
+    r, err := querySelect(s.db, sel)
+    s.mu.RUnlock()
+    ...
+}
+s.mu.Lock()
+out, err := run(s.db, stmt)
+s.mu.Unlock()</code></pre></div>
+        <p data-pt="A trava cobre o comando inteiro, e não cada chamada ao storage, porque &lt;code&gt;UPDATE&lt;/code&gt; e &lt;code&gt;DELETE&lt;/code&gt; primeiro leem as linhas que batem e depois gravam. Se outro escritor entrasse no meio, a segunda fase agiria sobre linhas que já não são o que o &lt;code&gt;WHERE&lt;/code&gt; viu. Uma trava por comando é grossa, mas é obviamente correta, e travas mais finas (por tabela, por linha) só fazem sentido de verdade junto com MVCC.">The lock wraps the whole command, not each storage call, because <code>UPDATE</code> and <code>DELETE</code> first read the matching rows and then write them. If another writer slipped in between, the second phase would act on rows that no longer look like what the <code>WHERE</code> saw. A per-command lock is coarse, but it is obviously correct, and finer-grained locking (per table, per row) only really makes sense together with MVCC.</p>
+        <p data-pt="Um limite conhecido: a trava vive dentro de um processo. Rodar o REPL e o servidor na mesma &lt;code&gt;data_dir&lt;/code&gt; ao mesmo tempo não é protegido. Uma trava de arquivo na pasta de dados fecharia esse buraco.">One known limit: the lock lives inside a process. Running the REPL and the server on the same <code>data_dir</code> at the same time is not protected. A file lock on the data directory would close that gap.</p>
+    </section>
+
+    <nav class="article-nav" aria-label="Articles">
+        <a class="nav-prev" href="05-where-and-planner.html"><span class="nav-dir" data-pt="← anterior">← previous</span><strong data-pt="Lógica de três valores e um planner baseado em regras">Three-valued logic and a rule-based query planner</strong></a>
+        <span></span>
+    </nav>
+
+    <footer>
+        <button onclick="window.location.href='../../projects/my_dbms.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao projeto">Back to the project</span></button>
+        <button onclick="window.open('https://github.com/nataferreiradev/my_dbms', '_blank')">
+            <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
+        </button>
+    </footer>
+  </div>
+    <script src="../../../scripts/i18n.js"></script>
+</body>
+</html>

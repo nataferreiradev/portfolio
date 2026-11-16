@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three-valued logic and a rule-based query planner - my_dbms</title>
+    <meta name="description" content="Compiling a WHERE clause into closures, why NULL = NULL is not true, and how the planner decides between a full scan and an index range.">
+    <link rel="stylesheet" href="../../../style/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/png" href="../../../../assets/favicon.png" />
+</head>
+<body>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/articles/my_dbms/05-where-and-planner</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
+    <header class="article-header">
+        <p class="article-kicker"><a href="../../projects/my_dbms.html">my_dbms</a> · <span data-pt="artigo 5 de 6">article 5 of 6</span></p>
+        <h1 data-pt="Lógica de três valores e um planner baseado em regras">Three-valued logic and a rule-based query planner</h1>
+        <p class="article-lead" data-pt="Compilando o WHERE em closures, por que NULL = NULL não é verdadeiro, e como o planner decide entre varredura completa e um intervalo de índice.">Compiling a WHERE clause into closures, why NULL = NULL is not true, and how the planner decides between a full scan and an index range.</p>
+        <p class="article-files"><span data-pt="Código:">Code:</span> <a href="https://github.com/nataferreiradev/my_dbms/blob/main/cmd/my_dbms/where.go" target="_blank"><code>cmd/my_dbms/where.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/cmd/my_dbms/plan.go" target="_blank"><code>cmd/my_dbms/plan.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/storage/index.go" target="_blank"><code>internal/storage/index.go</code></a></p>
+    </header>
+
+    <section>
+        <h2 data-pt="Compila uma vez, roda por linha">Compile once, run per row</h2>
+        <p data-pt="Interpretar a AST para cada linha repetiria o mesmo trabalho sem parar: achar o índice da coluna, converter o literal &lt;code&gt;&#x27;30&#x27;&lt;/code&gt; para número, escolher a comparação. O &lt;code&gt;compileWhere&lt;/code&gt; faz tudo isso uma vez e devolve uma árvore de closures Go. A validação também acontece nessa hora, então &lt;code&gt;WHERE idade = &#x27;abc&#x27;&lt;/code&gt; numa coluna &lt;code&gt;INT&lt;/code&gt; dá erro mesmo com a tabela vazia.">Interpreting the AST for every row would repeat the same work over and over: look up the column index, convert the literal <code>'30'</code> to a number, pick the comparison. <code>compileWhere</code> does all of that once and returns a tree of Go closures. Validation happens at compile time too, so <code>WHERE idade = 'abc'</code> on an <code>INT</code> column fails even on an empty table.</p>
+        <div class="code-block"><span class="code-label">cmd/my_dbms/where.go</span><pre><code>type predicate func(row []storage.Value) tri
+type getter    func(row []storage.Value) storage.Value
+
+case parser.ColumnRef:
+    i := schema.ColumnIndex(e.Name)          // resolved once
+    return func(row []storage.Value) storage.Value { return row[i] }, ...
+case parser.Literal:
+    v, err := literalValue(e, typ)           // converted once
+    return func([]storage.Value) storage.Value { return v }, ...</code></pre></div>
+    </section>
+
+    <section>
+        <h2 data-pt="NULL e lógica de três valores">NULL and three-valued logic</h2>
+        <p data-pt="No SQL, comparar qualquer coisa com &lt;code&gt;NULL&lt;/code&gt; não é verdadeiro nem falso: é &lt;em&gt;desconhecido&lt;/em&gt;. &lt;code&gt;WHERE email = NULL&lt;/code&gt; não acha nenhuma linha, e o raciocínio quebra se você tratar desconhecido como falso cedo demais. O my_dbms modela isso com um tipo ordenado em que &lt;code&gt;AND&lt;/code&gt; é &lt;code&gt;min&lt;/code&gt; e &lt;code&gt;OR&lt;/code&gt; é &lt;code&gt;max&lt;/code&gt;:">In SQL, comparing anything with <code>NULL</code> is neither true nor false: it is <em>unknown</em>. <code>WHERE email = NULL</code> matches no rows, and <code>NOT</code>-style reasoning breaks if you treat unknown as false too early. my_dbms models this with an ordered type where <code>AND</code> is <code>min</code> and <code>OR</code> is <code>max</code>:</p>
+        <div class="code-block"><span class="code-label">cmd/my_dbms/where.go</span><pre><code>type tri int
+
+const (
+    triFalse tri = iota   // false &lt; unknown &lt; true
+    triUnknown
+    triTrue
+)
+
+if e.Op == &quot;AND&quot; {
+    return func(row []storage.Value) tri { return min(left(row), right(row)) }, nil
+}
+return func(row []storage.Value) tri { return max(left(row), right(row)) }, nil</code></pre></div>
+        <p data-pt="&lt;code&gt;desconhecido AND falso&lt;/code&gt; é &lt;code&gt;falso&lt;/code&gt;, &lt;code&gt;desconhecido OR verdadeiro&lt;/code&gt; é &lt;code&gt;verdadeiro&lt;/code&gt;, e o &lt;code&gt;WHERE&lt;/code&gt; só deixa passar o que dá exatamente &lt;code&gt;triTrue&lt;/code&gt;. O &lt;code&gt;min&lt;/code&gt; e o &lt;code&gt;max&lt;/code&gt; nativos do Go 1.21 deixam a tabela-verdade inteira com duas linhas. Para procurar valores ausentes existe o &lt;code&gt;IS NULL&lt;/code&gt;, o único operador que olha direto para a flag de nulo."><code>unknown AND false</code> is <code>false</code>, <code>unknown OR true</code> is <code>true</code>, and the <code>WHERE</code> only keeps rows that evaluate to exactly <code>triTrue</code>. Go 1.21's built-in <code>min</code> and <code>max</code> make the whole truth table two lines long. To test for missing values you use <code>IS NULL</code>, which is the only operator that looks at the null flag directly.</p>
+    </section>
+
+    <section>
+        <h2 data-pt="Escolhendo o plano">Choosing a plan</h2>
+        <p data-pt="O &lt;code&gt;choosePlan&lt;/code&gt; decide como &lt;code&gt;SELECT&lt;/code&gt;, &lt;code&gt;UPDATE&lt;/code&gt; e &lt;code&gt;DELETE&lt;/code&gt; leem as linhas. Ele não tem estatísticas; é um planner pequeno, baseado em regras, que só olha comparações &lt;code&gt;coluna op literal&lt;/code&gt; ligadas por &lt;code&gt;AND&lt;/code&gt; no nível de cima do &lt;code&gt;WHERE&lt;/code&gt;. Tudo que está debaixo de um &lt;code&gt;OR&lt;/code&gt; é ignorado, porque uma linha poderia passar pelo lado que o índice não cobre."><code>choosePlan</code> decides how <code>SELECT</code>, <code>UPDATE</code> and <code>DELETE</code> read rows. It has no statistics; it is a small rule-based planner that only looks at <code>column op literal</code> comparisons joined by <code>AND</code> at the top level of the <code>WHERE</code>. Anything under an <code>OR</code> is ignored, because a row could match through the side the index doesn't cover.</p>
+        <ul>
+            <li data-pt="Um índice em &lt;code&gt;(a, b, c)&lt;/code&gt; serve quando o &lt;code&gt;WHERE&lt;/code&gt; fixa um prefixo das colunas com &lt;code&gt;=&lt;/code&gt; e, opcionalmente, limita a coluna seguinte com &lt;code&gt;&amp;lt;&lt;/code&gt;, &lt;code&gt;&amp;lt;=&lt;/code&gt;, &lt;code&gt;&amp;gt;&lt;/code&gt; ou &lt;code&gt;&amp;gt;=&lt;/code&gt;.">An index on <code>(a, b, c)</code> is usable when the <code>WHERE</code> fixes a prefix of its columns with <code>=</code> and, optionally, bounds the next column with <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> or <code>&gt;=</code>.</li>
+            <li data-pt="Pontuação: cada igualdade vale 2 pontos e um intervalo vale 1. Ganha a maior pontuação; o empate fica com o primeiro índice da tabela, que é a chave primária.">Scoring: each equality is worth 2 points and a range is worth 1. The highest score wins; ties go to the first index of the table, which is the primary key.</li>
+            <li data-pt="&lt;code&gt;5 &amp;lt; id&lt;/code&gt; vira &lt;code&gt;id &amp;gt; 5&lt;/code&gt; com um pequeno mapa &lt;code&gt;flip&lt;/code&gt;, então literal do lado esquerdo também usa o índice."><code>5 &lt; id</code> is normalized to <code>id &gt; 5</code> with a small <code>flip</code> map, so literal-on-the-left still uses the index.</li>
+            <li data-pt="Nenhum índice serve: varredura completa.">No usable index means a full scan.</li>
+        </ul>
+        <div class="code-block"><span class="code-label">EXPLAIN</span><pre><code>my_dbms&gt; CREATE INDEX p_idade ON p (idade);
+my_dbms&gt; EXPLAIN SELECT * FROM p WHERE idade &gt;= 30 AND idade &lt; 40 AND nome &lt;&gt; &#x27;x&#x27;;
+busca no índice p_idade da tabela p (idade &gt;= 30 AND idade &lt; 40)
+
+my_dbms&gt; EXPLAIN SELECT * FROM p WHERE idade = 30 OR id = 1;
+varredura completa na tabela p</code></pre></div>
+    </section>
+
+    <section>
+        <h2 data-pt="O índice é só um filtro grosso">The index is only a coarse filter</h2>
+        <p data-pt="O plano vira um &lt;code&gt;storage.IndexRange&lt;/code&gt;: os valores de igualdade das primeiras colunas mais limites &lt;code&gt;From&lt;/code&gt;/&lt;code&gt;To&lt;/code&gt; opcionais para a seguinte. O storage codifica tudo com o mesmo formato de chave ordenável por bytes, posiciona no início e anda pelas folhas até uma entrada perder o prefixo ou passar da chave final.">The plan becomes a <code>storage.IndexRange</code>: the equality values for the leading columns plus optional <code>From</code>/<code>To</code> bounds for the next one. The storage encodes them with the same byte-sortable key format, seeks to the start and walks the leaves until an entry no longer has the prefix or passes the end key.</p>
+        <p data-pt="Os limites são inclusivos e o índice pode devolver algumas linhas a mais (linhas com &lt;code&gt;NULL&lt;/code&gt;, ou &lt;code&gt;id = 5&lt;/code&gt; para &lt;code&gt;id &amp;gt; 5&lt;/code&gt;). Isso é proposital: o &lt;code&gt;WHERE&lt;/code&gt; compilado inteiro ainda roda em cada linha que o índice devolve. Manter o índice como pré-filtro garante que o planner nunca muda o resultado de uma consulta, só a velocidade.">Bounds are inclusive and the index may return a few extra rows (rows with <code>NULL</code>, or <code>id = 5</code> for <code>id &gt; 5</code>). That's fine by design: the full compiled <code>WHERE</code> still runs on every row the index returns. Keeping the index as a pre-filter means the planner can never change a query's result, only its speed.</p>
+        <div class="code-block"><span class="code-label">cmd/my_dbms/plan.go</span><pre><code>func (p plan) rows(db *storage.DB) iter.Seq2[storage.Row, error] {
+    if p.index == nil {
+        return db.Scan(p.table)
+    }
+    return db.IndexScan(p.table, p.index.Name, p.r)
+}
+
+for row, err := range plan.rows(db) {   // Go 1.23 range-over-func
+    ...
+    if where(row.Values) == triTrue { ... }
+}</code></pre></div>
+        <p data-pt="Os dois caminhos são iteradores &lt;code&gt;iter.Seq2&lt;/code&gt;, então o executor não se importa com qual recebeu, as linhas vêm em fluxo em vez de carregadas num slice, e sair do loop para a varredura e fecha a transação pelo &lt;code&gt;defer&lt;/code&gt;.">Both access paths are <code>iter.Seq2</code> iterators, so the executor doesn't care which one it got, rows are streamed instead of loaded into a slice, and breaking out of the loop stops the scan and closes the transaction through <code>defer</code>.</p>
+    </section>
+
+    <nav class="article-nav" aria-label="Articles">
+        <a class="nav-prev" href="04-transactions-journal.html"><span class="nav-dir" data-pt="← anterior">← previous</span><strong data-pt="Tudo ou nada: transações e um rollback journal">All or nothing: transactions and a rollback journal</strong></a>
+        <a class="nav-next" href="06-tcp-server.html"><span class="nav-dir" data-pt="próximo →">next →</span><strong data-pt="Um servidor TCP com protocolo de linhas JSON e trava de leitores e escritor">A TCP server with a JSON-lines protocol and a readers-writer lock</strong></a>
+    </nav>
+
+    <footer>
+        <button onclick="window.location.href='../../projects/my_dbms.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao projeto">Back to the project</span></button>
+        <button onclick="window.open('https://github.com/nataferreiradev/my_dbms', '_blank')">
+            <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
+        </button>
+    </footer>
+  </div>
+    <script src="../../../scripts/i18n.js"></script>
+</body>
+</html>

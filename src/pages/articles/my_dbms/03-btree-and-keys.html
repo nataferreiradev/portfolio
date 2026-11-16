@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A B+tree from scratch, and keys that sort as bytes - my_dbms</title>
+    <meta name="description" content="How indexes are stored, why the root never moves, and the byte-encoding trick that lets the tree compare keys without knowing column types.">
+    <link rel="stylesheet" href="../../../style/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/png" href="../../../../assets/favicon.png" />
+</head>
+<body>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/articles/my_dbms/03-btree-and-keys</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
+    <header class="article-header">
+        <p class="article-kicker"><a href="../../projects/my_dbms.html">my_dbms</a> · <span data-pt="artigo 3 de 6">article 3 of 6</span></p>
+        <h1 data-pt="Uma B+tree do zero, e chaves que se ordenam como bytes">A B+tree from scratch, and keys that sort as bytes</h1>
+        <p class="article-lead" data-pt="Como os índices são guardados, por que a raiz nunca muda de lugar, e o truque de codificação que deixa a árvore comparar chaves sem conhecer os tipos das colunas.">How indexes are stored, why the root never moves, and the byte-encoding trick that lets the tree compare keys without knowing column types.</p>
+        <p class="article-files"><span data-pt="Código:">Code:</span> <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/storage/btree.go" target="_blank"><code>internal/storage/btree.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/storage/key.go" target="_blank"><code>internal/storage/key.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/storage/index.go" target="_blank"><code>internal/storage/index.go</code></a></p>
+    </header>
+
+    <section>
+        <h2 data-pt="Formato da árvore">Shape of the tree</h2>
+        <p data-pt="Cada índice é uma B+tree num arquivo &lt;code&gt;.mari&lt;/code&gt; próprio, feita com as mesmas páginas com slots das tabelas. As folhas guardam as entradas em ordem e são encadeadas pelo campo &lt;code&gt;link&lt;/code&gt;, então uma busca por intervalo desce uma vez e depois só anda para o lado. Os nós internos guardam registros &lt;code&gt;chave | página filha&lt;/code&gt;, e o link aponta para a filha mais à direita.">Each index is a B+tree in its own <code>.mari</code> file, built on the same slotted pages as tables. Leaves hold the actual entries in sorted order and are chained by their <code>link</code> field, so a range scan descends once and then just walks sideways. Internal nodes hold <code>key | child page</code> records, and their link points to the rightmost child.</p>
+        <div class="code-block"><span class="code-label">B+tree</span><pre><code>                  page 1: root (internal node)
+          ┌───────────────────────────────────────────┐
+          │ (k1, pg 2) | (k2, pg 3) | link = pg 4     │
+          └───────────────────────────────────────────┘
+               /                |                \
+          &lt; k1 /     &gt;= k1 and &lt; k2 |                 \ &gt;= k2
+  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+  │ leaf  pg 2  │ ───→ │ leaf  pg 3  │ ───→ │ leaf  pg 4  │ ───→ end
+  └─────────────┘      └─────────────┘      └─────────────┘</code></pre></div>
+    </section>
+
+    <section>
+        <h2 data-pt="A raiz é sempre a página 1">The root is always page 1</h2>
+        <p data-pt="A maioria das B+trees de livro cria uma raiz nova quando a antiga divide, o que obriga a guardar onde a raiz está e atualizar isso. Aqui a raiz nunca sai do lugar: quando a página 1 enche, o conteúdo dela vai para &lt;strong&gt;duas páginas novas&lt;/strong&gt; e a página 1 é regravada como nó interno com uma chave só. A árvore cresce por cima, e nenhum metadado precisa saber onde a raiz está.">Most textbook B+trees create a new root when the old one splits, which means storing the root's location somewhere and updating it. Here the root never moves: when page 1 fills up, its contents are copied into <strong>two new pages</strong> and page 1 is rewritten as an internal node with a single key. The tree grows from the top, and no metadata has to track where the root is.</p>
+        <p data-pt="A inserção é uma função recursiva curta. Ela desce até a folha certa, insere na posição ordenada e, se a página estourar, divide no meio &lt;em&gt;contando bytes&lt;/em&gt; (não registros, porque as entradas têm tamanhos diferentes) e devolve a chave separadora para o pai, que pode dividir também.">Insertion is a short recursive function. It descends to the right leaf, inserts in sorted position and, if the page overflows, splits it in the middle <em>by bytes</em> (not by count, because entries have variable length) and returns the separator key to the parent, which may split in turn.</p>
+        <div class="code-block"><span class="code-label">internal/storage/btree.go</span><pre><code>i := childIndex(records, entry)
+child := int(childAt(records, link, i))
+sep, right, err = t.insertInto(name, child, entry)
+if err != nil || right == 0 {
+    return nil, 0, err           // child did not split: done
+}
+// The child split: keys smaller than sep stay in it, and the pointer
+// that used to point at it now points at the new right page.
+if i == len(records) {
+    link = uint32(right)
+} else {
+    records[i] = internalRecord(nodeKey(records[i]), right)
+}
+return t.store(name, n, pageInternal, link, slices.Insert(records, i, internalRecord(sep, child)))</code></pre></div>
+        <ul>
+            <li data-pt="&lt;strong&gt;Apagar nunca junta páginas.&lt;/strong&gt; Uma folha pode até ficar vazia. O PostgreSQL faz a mesma troca no &lt;code&gt;DELETE&lt;/code&gt; comum, e isso deixa o código bem mais simples."><strong>Deletes never merge pages.</strong> A leaf may even become empty. PostgreSQL makes the same trade-off in a regular <code>DELETE</code>, and it keeps the code much simpler.</li>
+            <li data-pt="&lt;strong&gt;Uma entrada tem no máximo um quarto da página.&lt;/strong&gt; Isso garante que dividir uma página cheia sempre dá duas metades que cabem, mesmo nos nós internos, que guardam a chave mais 4 bytes."><strong>An entry is at most a quarter of a page.</strong> That guarantees a full page always splits into two halves that fit, even in internal nodes, which store the key plus 4 bytes.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 data-pt="Chaves que se ordenam como bytes">Keys that sort as bytes</h2>
+        <p data-pt="A árvore compara entradas com &lt;code&gt;bytes.Compare&lt;/code&gt; e não sabe nada de &lt;code&gt;INT&lt;/code&gt; ou &lt;code&gt;TEXT&lt;/code&gt;. Isso só funciona se os valores forem codificados de modo que &lt;em&gt;a ordem dos bytes seja a ordem dos valores&lt;/em&gt;, coisa que o formato do registro não faz (um int64 little endian ordena errado, e um texto com o tamanho na frente poria &lt;code&gt;&#x27;b&#x27;&lt;/code&gt; antes de &lt;code&gt;&#x27;aa&#x27;&lt;/code&gt;).">The tree compares entries with <code>bytes.Compare</code> and knows nothing about <code>INT</code> or <code>TEXT</code>. That only works if values are encoded so that <em>byte order equals value order</em>, which the record format does not do (a little-endian int64 sorts wrong, and a length-prefixed text would put <code>'b'</code> before <code>'aa'</code>).</p>
+        <div class="code-block"><span class="code-label">internal/storage/key.go</span><pre><code>NULL  →  00                                       sorts before everything
+INT   →  01 | 8 bytes big endian, sign bit flipped
+TEXT  →  01 | bytes, each 00 escaped as 00 FF | 00 01
+
+  -1  →  01 7F FF FF FF FF FF FF FF
+   0  →  01 80 00 00 00 00 00 00 00
+ &#x27;a&#x27;  →  01 61 00 01
+&#x27;ab&#x27;  →  01 61 62 00 01               &#x27;a&#x27; &lt; &#x27;ab&#x27; because 00 &lt; 62</code></pre></div>
+        <ul>
+            <li data-pt="&lt;strong&gt;Inverter o bit de sinal&lt;/strong&gt; transforma complemento de dois em ordem sem sinal: os negativos vêm primeiro e &lt;code&gt;-1&lt;/code&gt; fica logo antes de &lt;code&gt;0&lt;/code&gt;."><strong>Flipping the sign bit</strong> turns two's complement into unsigned order: negatives come first and <code>-1</code> sits right before <code>0</code>.</li>
+            <li data-pt="&lt;strong&gt;O terminador &lt;code&gt;00 01&lt;/code&gt;&lt;/strong&gt; é menor que qualquer continuação, então um prefixo vem antes das extensões dele. Escapar os zeros do texto como &lt;code&gt;00 FF&lt;/code&gt; mantém o terminador sem ambiguidade."><strong>The <code>00 01</code> terminator</strong> is smaller than any continuation, so a prefix sorts before its extensions. Escaping embedded zeros as <code>00 FF</code> keeps the terminator unambiguous.</li>
+            <li data-pt="&lt;strong&gt;Chaves de várias colunas são só concatenação.&lt;/strong&gt; Como cada valor codificado sabe onde termina, &lt;code&gt;(&#x27;a&#x27;, &#x27;bc&#x27;)&lt;/code&gt; e &lt;code&gt;(&#x27;ab&#x27;, &#x27;c&#x27;)&lt;/code&gt; nunca se confundem, e &quot;as N primeiras colunas são iguais a X&quot; vira &lt;code&gt;bytes.HasPrefix(entry, X)&lt;/code&gt;."><strong>Multi-column keys are just concatenation.</strong> Because every encoded value knows where it ends, <code>('a', 'bc')</code> and <code>('ab', 'c')</code> never collide, and "the first N columns equal X" becomes <code>bytes.HasPrefix(entry, X)</code>.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 data-pt="Toda entrada é única, mesmo num índice não único">Every entry is unique, even in a non-unique index</h2>
+        <p data-pt="Uma entrada de índice é a chave codificada seguida do RID da linha (6 bytes). Duas linhas com o mesmo nome ainda geram entradas diferentes, então a árvore nunca lida com duplicatas, e apagar a entrada de uma linha específica acha exatamente ela.">An index entry is the encoded key followed by the row's 6-byte RID. Two rows with the same name still produce different entries, so the tree never has to handle duplicates, and deleting the entry of a specific row finds exactly that one.</p>
+        <p data-pt="&lt;code&gt;PRIMARY KEY&lt;/code&gt; e &lt;code&gt;UNIQUE&lt;/code&gt; são garantidos pelo mesmo índice. Antes de gravar uma linha, o storage busca a chave e confere se a primeira entrada encontrada começa com ela. Chaves com &lt;code&gt;NULL&lt;/code&gt; são ignoradas, porque no SQL &lt;code&gt;NULL&lt;/code&gt; não é igual a nada, então uma coluna &lt;code&gt;UNIQUE&lt;/code&gt; aceita vários &lt;code&gt;NULL&lt;/code&gt;."><code>PRIMARY KEY</code> and <code>UNIQUE</code> are enforced by the same index. Before writing a row, the storage seeks the key and checks whether the first entry found starts with it. Keys containing <code>NULL</code> are skipped, because in SQL <code>NULL</code> is not equal to anything, so a <code>UNIQUE</code> column accepts many <code>NULL</code>s.</p>
+        <div class="code-block"><span class="code-label">internal/storage/index.go</span><pre><code>c, err := t.btreeSeek(idx.Name, key)   // first entry &gt;= key
+if err != nil {
+    return err
+}
+if c.valid() &amp;&amp; hasKey(c.entry(), key) {
+    return fmt.Errorf(&quot;valor duplicado viola a chave %s: ...&quot;, idx.Name)
+}</code></pre></div>
+    </section>
+
+    <section>
+        <h2 data-pt="Vale a pena?">Does it pay off?</h2>
+        <p data-pt="O projeto tem um benchmark de &lt;code&gt;SELECT ... WHERE id = ?&lt;/code&gt; pelo índice da chave primária. Crescer a tabela 100 vezes quase não muda o tempo de cada busca, que é o comportamento logarítmico que a B+tree promete (os números incluem lexer, parser, plano e abertura dos arquivos):">The project has a benchmark for <code>SELECT ... WHERE id = ?</code> through the primary key index. Growing the table 100× barely moves the time per lookup, which is the logarithmic behavior a B+tree promises (these numbers include lexing, parsing, planning and opening the files):</p>
+        <div class="code-block"><span class="code-label">go test -bench SelectByKey ./cmd/my_dbms</span><pre><code>BenchmarkSelectByKey/100      16.2 µs/op
+BenchmarkSelectByKey/1000     18.0 µs/op
+BenchmarkSelectByKey/10000    19.9 µs/op</code></pre></div>
+    </section>
+
+    <nav class="article-nav" aria-label="Articles">
+        <a class="nav-prev" href="02-pages-and-records.html"><span class="nav-dir" data-pt="← anterior">← previous</span><strong data-pt="Páginas com slots e endereços estáveis: o formato em disco">Slotted pages and stable row ids: the on-disk format</strong></a>
+        <a class="nav-next" href="04-transactions-journal.html"><span class="nav-dir" data-pt="próximo →">next →</span><strong data-pt="Tudo ou nada: transações e um rollback journal">All or nothing: transactions and a rollback journal</strong></a>
+    </nav>
+
+    <footer>
+        <button onclick="window.location.href='../../projects/my_dbms.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao projeto">Back to the project</span></button>
+        <button onclick="window.open('https://github.com/nataferreiradev/my_dbms', '_blank')">
+            <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
+        </button>
+    </footer>
+  </div>
+    <script src="../../../scripts/i18n.js"></script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>From text to AST: a hand-written lexer and recursive descent parser - my_dbms</title>
+    <meta name="description" content="How my_dbms turns select nome from p where id=1; into a typed Go value, without parser generators, and how fuzzing keeps it from crashing.">
+    <link rel="stylesheet" href="../../../style/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/png" href="../../../../assets/favicon.png" />
+</head>
+<body>
+  <div class="terminal-window">
+    <div class="terminal-titlebar">
+        <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-yellow"></span>
+            <span class="dot-green"></span>
+        </div>
+        <div class="terminal-title">nata@dev: ~/articles/my_dbms/01-lexer-parser</div>
+        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+    </div>
+
+    <header class="article-header">
+        <p class="article-kicker"><a href="../../projects/my_dbms.html">my_dbms</a> · <span data-pt="artigo 1 de 6">article 1 of 6</span></p>
+        <h1 data-pt="Do texto à AST: um lexer escrito à mão e um parser descendente recursivo">From text to AST: a hand-written lexer and recursive descent parser</h1>
+        <p class="article-lead" data-pt="Como o my_dbms transforma &lt;code&gt;select nome from p where id=1;&lt;/code&gt; num valor Go tipado, sem gerador de parser, e como o fuzzing impede que ele quebre.">How my_dbms turns <code>select nome from p where id=1;</code> into a typed Go value, without parser generators, and how fuzzing keeps it from crashing.</p>
+        <p class="article-files"><span data-pt="Código:">Code:</span> <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/sql/lexer.go" target="_blank"><code>internal/sql/lexer.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/sql/token.go" target="_blank"><code>internal/sql/token.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/parser/parser.go" target="_blank"><code>internal/parser/parser.go</code></a>, <a href="https://github.com/nataferreiradev/my_dbms/blob/main/internal/parser/ast.go" target="_blank"><code>internal/parser/ast.go</code></a></p>
+    </header>
+
+    <section>
+        <h2 data-pt="O pipeline">The pipeline</h2>
+        <p data-pt="Todo comando passa pelos mesmos três estágios. O lexer não sabe nada de gramática, o parser não sabe nada de tabelas, e só o executor fala com o disco. Cada estágio tem um tipo de entrada e um de saída, o que deixa cada um fácil de testar isolado.">Every command goes through the same three stages. The lexer knows nothing about grammar, the parser knows nothing about tables, and only the executor talks to the disk. Each stage has one input type and one output type, which makes them trivial to test in isolation.</p>
+        <div class="code-block"><span class="code-label">flow</span><pre><code>&quot;select nome from p where id=1;&quot;
+        │  sql.Lex()       string   → []Token
+        ▼
+[SELECT] [nome] [FROM] [p] [WHERE] [id] [=] [1] [;]
+        │  parser.Parse()  []Token  → Statement
+        ▼
+&amp;Select{Table: &quot;p&quot;, Columns: [&quot;nome&quot;],
+        Where: &amp;Comparison{ColumnRef{&quot;id&quot;}, &quot;=&quot;, Literal{1}}}
+        │  execute()       Statement → output
+        ▼
+nome
+----
+Ana</code></pre></div>
+    </section>
+
+    <section>
+        <h2 data-pt="O lexer: um switch sobre runas">The lexer: one switch over runes</h2>
+        <p data-pt="O &lt;code&gt;Lex&lt;/code&gt; percorre a entrada como &lt;code&gt;[]rune&lt;/code&gt; (assim posições contam caracteres, não bytes) e decide o que fazer só pelo caractere atual. Não há tabela de estados: um único &lt;code&gt;switch&lt;/code&gt; cobre espaço, strings, símbolos, operadores e &quot;o resto é palavra&quot;."><code>Lex</code> walks the input as <code>[]rune</code> (so accented identifiers and strings count characters, not bytes) and decides what to do from the current character alone. There is no state machine table: a single <code>switch</code> covers whitespace, strings, symbols, operators and "everything else is a word".</p>
+        <div class="code-block"><span class="code-label">internal/sql/lexer.go</span><pre><code>case strings.ContainsRune(operatorChars, r):
+    op := string(r)
+    if i+1 &lt; len(runes) &amp;&amp; operators[op+string(runes[i+1])] {
+        op += string(runes[i+1])   // one rune of lookahead: &lt;=, &gt;=, &lt;&gt;
+    }
+    tokens = append(tokens, Token{Operator, op, start})
+    i += len(op)</code></pre></div>
+        <ul>
+            <li data-pt="&lt;strong&gt;Operadores separam palavras:&lt;/strong&gt; &lt;code&gt;*=&amp;lt;&amp;gt;&lt;/code&gt; são fronteiras, então &lt;code&gt;id=1&lt;/code&gt; vira &lt;code&gt;[id] [=] [1]&lt;/code&gt; sem precisar de espaço."><strong>Operators split words:</strong> <code>*=&lt;&gt;</code> are boundaries, so <code>id=1</code> becomes <code>[id] [=] [1]</code> with no whitespace needed.</li>
+            <li data-pt="&lt;strong&gt;Strings usam aspa repetida como escape:&lt;/strong&gt; &lt;code&gt;&#x27;it&#x27;&#x27;s&#x27;&lt;/code&gt; é o texto &lt;code&gt;it&#x27;s&lt;/code&gt;. Não existe escape com barra, igual ao SQL padrão."><strong>Strings use doubled quotes as escape:</strong> <code>'it''s'</code> is the text <code>it's</code>. There is no backslash escaping, exactly like standard SQL.</li>
+            <li data-pt="&lt;strong&gt;Palavras são classificadas depois de lidas:&lt;/strong&gt; primeiro o mapa de keywords, depois a regex de número, depois a de identificador. Keywords viram maiúsculas, então o parser só compara com &lt;code&gt;&quot;SELECT&quot;&lt;/code&gt;."><strong>Words are classified after they are read:</strong> keyword map first, then a number regex, then an identifier regex. Keywords are normalized to upper case, so the parser only ever compares against <code>"SELECT"</code>.</li>
+            <li data-pt="&lt;strong&gt;Todo token guarda a posição&lt;/strong&gt;, então os erros dizem &lt;code&gt;posição 14: token inválido &quot;@x&quot;&lt;/code&gt; em vez de só falhar."><strong>Every token keeps its position</strong>, so errors read <code>posição 14: token inválido "@x"</code> instead of a bare failure.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 data-pt="O parser: um método por regra da gramática">The parser: one method per grammar rule</h2>
+        <p data-pt="O parser é descendente recursivo: cada regra da gramática é um método que consome os próprios tokens e chama os métodos das sub-regras. O &lt;code&gt;statement()&lt;/code&gt; escolhe a regra pelo primeiro token, olhando o segundo só quando precisa (&lt;code&gt;CREATE TABLE&lt;/code&gt; ou &lt;code&gt;CREATE INDEX&lt;/code&gt;).">The parser is recursive descent: each rule of the grammar is a method that consumes its own tokens and calls the methods of its sub-rules. <code>statement()</code> picks the rule by the first token, looking at the second one only when it has to (<code>CREATE TABLE</code> vs. <code>CREATE INDEX</code>).</p>
+        <p data-pt="Meia dúzia de ajudantes pequenos fazem as regras parecerem a própria gramática: &lt;code&gt;accept&lt;/code&gt; (consome se bater), &lt;code&gt;expect&lt;/code&gt; (consome ou falha), &lt;code&gt;ident&lt;/code&gt;, &lt;code&gt;literal&lt;/code&gt;, &lt;code&gt;list&lt;/code&gt; (lista entre parênteses separada por vírgula) e &lt;code&gt;names&lt;/code&gt;.">A handful of tiny helpers make the rules read almost like the grammar itself: <code>accept</code> (consume if it matches), <code>expect</code> (consume or fail), <code>ident</code>, <code>literal</code>, <code>list</code> (a parenthesized, comma-separated list) and <code>names</code>.</p>
+        <h3 data-pt="Precedência de operadores de graça">Operator precedence for free</h3>
+        <p data-pt="A precedência no &lt;code&gt;WHERE&lt;/code&gt; está codificada em qual método chama qual. O &lt;code&gt;or&lt;/code&gt; é feito de &lt;code&gt;and&lt;/code&gt;, e o &lt;code&gt;and&lt;/code&gt; é feito de comparações, então &lt;code&gt;AND&lt;/code&gt; amarra mais forte que &lt;code&gt;OR&lt;/code&gt; sem tabela de precedência. Parênteses só recomeçam no &lt;code&gt;or&lt;/code&gt;.">Precedence in <code>WHERE</code> is encoded by which method calls which. <code>or</code> is built from <code>and</code>, and <code>and</code> is built from comparisons, so <code>AND</code> binds tighter than <code>OR</code> without any precedence table. Parentheses simply restart at <code>or</code>.</p>
+        <div class="code-block"><span class="code-label">internal/parser/parser.go</span><pre><code>func (p *parser) or() (Expr, error)  { return p.logical(&quot;OR&quot;, p.and) }
+func (p *parser) and() (Expr, error) { return p.logical(&quot;AND&quot;, p.comparison) }
+
+// logical reads &quot;x op x op x ...&quot; and folds it left to right.
+func (p *parser) logical(op string, operand func() (Expr, error)) (Expr, error) {
+    left, err := operand()
+    if err != nil {
+        return nil, err
+    }
+    for p.accept(op) {
+        right, err := operand()
+        if err != nil {
+            return nil, err
+        }
+        left = &amp;Logical{Op: op, Left: left, Right: right}
+    }
+    return left, nil
+}</code></pre></div>
+    </section>
+
+    <section>
+        <h2 data-pt="A AST como interface selada">The AST as a sealed interface</h2>
+        <p data-pt="Cada comando é uma struct simples. Todas implementam &lt;code&gt;Statement&lt;/code&gt;, cujo único método é privado, então nenhum pacote fora do &lt;code&gt;parser&lt;/code&gt; consegue inventar um tipo de comando novo. O executor usa um type switch, e adicionar um comando é adicionar mais um &lt;code&gt;case&lt;/code&gt;.">Each command is a plain struct. They all implement <code>Statement</code>, whose only method is unexported, so no package outside <code>parser</code> can invent a new statement type. The executor then uses a type switch, and adding a command means adding one more <code>case</code>.</p>
+        <div class="code-block"><span class="code-label">internal/parser/ast.go</span><pre><code>type Statement interface {
+    statement()
+}
+
+type Select struct {
+    Table   string
+    Columns []string // nil means *
+    Where   Expr     // nil means every row
+}</code></pre></div>
+    </section>
+
+    <section>
+        <h2 data-pt="Fuzzing: &quot;ou sai uma AST ou um erro, nunca um panic&quot;">Fuzzing: "either an AST or an error, never a panic"</h2>
+        <p data-pt="Um parser escrito à mão tem muitas expressões como &lt;code&gt;tokens[p.pos+1]&lt;/code&gt;, e cada uma é um panic em potencial. O fuzzing nativo do Go confere uma propriedade simples contra milhões de entradas aleatórias: &lt;code&gt;Lex&lt;/code&gt; + &lt;code&gt;Parse&lt;/code&gt; devolvem um comando ou um erro.">A hand-written parser has many index expressions like <code>tokens[p.pos+1]</code>, and each is a potential panic. Go's native fuzzing checks one simple property against millions of random inputs: <code>Lex</code> + <code>Parse</code> either return a statement or an error.</p>
+        <div class="code-block"><span class="code-label">go test ./internal/parser -fuzz FuzzParse</span><pre><code>f.Fuzz(func(t *testing.T, input string) {
+    tokens, err := sql.Lex(input)
+    if err != nil {
+        return
+    }
+    stmt, err := Parse(tokens)
+    if err == nil &amp;&amp; stmt == nil {
+        t.Errorf(&quot;Parse(%q) without error and without a statement&quot;, input)
+    }
+})</code></pre></div>
+        <p data-pt="A mesma técnica depois foi apontada para o decodificador do storage, e achou bugs de verdade: tamanhos uvarint com bytes sobrando e bits soltos no bitmap de NULL eram aceitos como linhas válidas. A entrada que falhou mora em &lt;code&gt;testdata/fuzz&lt;/code&gt; como teste de regressão permanente.">The same technique was later pointed at the storage decoder, and it found real bugs there: overlong uvarint lengths and stray bits in the NULL bitmap were being accepted as valid rows. The failing input lives in <code>testdata/fuzz</code> as a permanent regression test.</p>
+    </section>
+
+    <nav class="article-nav" aria-label="Articles">
+        <span></span>
+        <a class="nav-next" href="02-pages-and-records.html"><span class="nav-dir" data-pt="próximo →">next →</span><strong data-pt="Páginas com slots e endereços estáveis: o formato em disco">Slotted pages and stable row ids: the on-disk format</strong></a>
+    </nav>
+
+    <footer>
+        <button onclick="window.location.href='../../projects/my_dbms.html'"><i class="fas fa-arrow-left"></i> <span data-pt="Voltar ao projeto">Back to the project</span></button>
+        <button onclick="window.open('https://github.com/nataferreiradev/my_dbms', '_blank')">
+            <i class="fab fa-github"></i> <span data-pt="Ver no GitHub">View on GitHub</span>
+        </button>
+    </footer>
+  </div>
+    <script src="../../../scripts/i18n.js"></script>
+</body>
+</html>
