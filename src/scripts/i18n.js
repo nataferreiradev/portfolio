@@ -2,7 +2,10 @@
 // The English version is whatever is written in the HTML; the Portuguese version lives in data-pt.
 (function () {
     const STORAGE_KEY = 'portfolio-lang';
-    let currentLang = localStorage.getItem(STORAGE_KEY) || 'en';
+    let currentLang = 'pt';
+    try {
+        currentLang = localStorage.getItem(STORAGE_KEY) || 'pt';
+    } catch (e) { /* storage blocked: keep the default */ }
 
     function captureDefaults() {
         document.querySelectorAll('[data-pt]').forEach(el => {
@@ -19,7 +22,9 @@
             if (html !== null) el.innerHTML = html;
         });
         document.documentElement.lang = lang === 'pt' ? 'pt-BR' : 'en';
-        localStorage.setItem(STORAGE_KEY, lang);
+        try {
+            localStorage.setItem(STORAGE_KEY, lang);
+        } catch (e) { /* storage blocked: the choice just won't persist */ }
 
         const btn = document.getElementById('lang-toggle');
         if (btn) {

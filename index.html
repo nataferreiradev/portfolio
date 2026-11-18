@@ -3,67 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NataFerreiraDev</title>
+    <title>Natã Ferreira · Desenvolvedor full stack</title>
+    <meta name="description" content="Portfólio de Natã Nogueira Ferreira, desenvolvedor full stack: projetos, artigos técnicos e contato.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="src/style/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="icon" type="image/png" href="assets/favicon.png" />
-
 </head>
-<body>
-  <div class="terminal-window">
-    <div class="terminal-titlebar">
-        <div class="terminal-dots">
-            <span class="dot-red"></span>
-            <span class="dot-yellow"></span>
-            <span class="dot-green"></span>
+<body class="home">
+<div class="herowrap">
+    <div class="field" aria-hidden="true">
+        <div class="layer" data-depth-x="-22" data-depth-y="-14">
+            <span class="p" style="left: 6%; top: 18%; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); opacity: .22; animation-duration: 13s"></span>
+            <span class="p" style="left: 16%; top: 62%; width: 10px; height: 10px; border-radius: 3px; background: var(--ink-2); opacity: .12; animation-duration: 17s; animation-delay: -4s"></span>
+            <span class="p" style="left: 30%; top: 8%; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-2); opacity: .14; animation-duration: 11s; animation-delay: -2s"></span>
+            <span class="p" style="left: 44%; top: 78%; width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--accent); opacity: .22; animation-duration: 19s; animation-delay: -7s"></span>
+            <span class="p" style="left: 58%; top: 14%; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink-2); opacity: .13; animation-duration: 15s; animation-delay: -3s"></span>
+            <span class="p" style="left: 88%; top: 72%; width: 16px; height: 16px; border-radius: 4px; background: var(--accent); opacity: .16; animation-duration: 16s; animation-delay: -9s"></span>
+            <span class="p" style="left: 73%; top: 88%; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); opacity: .3; animation-duration: 12s; animation-delay: -5s"></span>
         </div>
-        <div class="terminal-title">nata@dev: ~/portfolio</div>
-        <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+        <div class="layer" data-depth-x="34" data-depth-y="20">
+            <span class="p" style="left: 11%; top: 40%; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: .35; animation-duration: 9s; animation-delay: -1s"></span>
+            <span class="p" style="left: 25%; top: 86%; width: 7px; height: 7px; border-radius: 2px; background: var(--accent); opacity: .28; animation-duration: 10s; animation-delay: -6s"></span>
+            <span class="p" style="left: 37%; top: 30%; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-2); opacity: .18; animation-duration: 8s; animation-delay: -2s"></span>
+            <span class="p" style="left: 52%; top: 52%; width: 8px; height: 8px; border-radius: 2px; border: 1.5px solid var(--ink-2); opacity: .16; animation-duration: 12s; animation-delay: -8s"></span>
+            <span class="p" style="left: 66%; top: 34%; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: .3; animation-duration: 10s; animation-delay: -4s"></span>
+            <span class="p" style="left: 81%; top: 20%; width: 7px; height: 7px; border-radius: 2px; background: var(--ink-2); opacity: .16; animation-duration: 11s; animation-delay: -7s"></span>
+            <span class="p" style="left: 94%; top: 46%; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: .34; animation-duration: 9s; animation-delay: -3s"></span>
+        </div>
     </div>
 
-    <header class="home-header">
-        <h1>Natã Nogueira Ferreira</h1>
-        <nav>
-            <ul>
-                <li><a href="#sobre"><i class="fas fa-user"></i> <span data-pt="sobre">about</span></a></li>
-                <li><a href="#posts"><i class="fas fa-blog"></i> <span data-pt="posts">posts</span></a></li>
-                <li><a href="#projetos"><i class="fas fa-project-diagram"></i> <span data-pt="projetos">projects</span></a></li>
-                <li><a href="#contact"><i class="fas fa-address-book"></i> <span data-pt="contato">contact</span></a></li>
-            </ul>
+    <div class="wrap">
+        <nav class="nav" aria-label="Principal">
+            <a class="brand" href="#topo">Natã Ferreira</a>
+            <div class="nav-links">
+                <a href="#sobre" data-pt="Sobre">About</a>
+                <a href="#projetos" data-pt="Projetos">Projects</a>
+                <a href="#posts">Posts</a>
+                <a href="#contato" data-pt="Contato">Contact</a>
+                <button id="lang-toggle" class="lang-toggle" type="button">PT</button>
+            </div>
         </nav>
-    </header>
 
-    <main>
-    <section id="sobre" aria-label="About Me">
-        <h2 data-pt="cat sobre.md">cat about.md</h2>
-        <p data-pt="Sou um engenheiro de software com experiência em desenvolvimento de aplicativos mobile. Tenho paixão por resolver problemas complexos e criar soluções eficientes, sempre buscando aprimorar minhas habilidades e aprender novas tecnologias. Meu foco é escrever código de alta qualidade e desenvolver aplicações que gerem impacto real...">I am a software engineer with experience in mobile application development. I have a passion for solving complex problems and creating efficient solutions, always striving to improve my skills and learn new technologies. My focus is on writing high-quality code and developing applications that make a real impact...</p>
-        <p data-pt="Atualmente, sou desenvolvedor mobile pleno na Compusoftware, em Araçatuba, SP, Brasil.">Actually, I am a mid-level mobile developer at Compusoftware in Araçatuba, SP, Brazil.</p>
-        <p data-pt="Estou no Brasil.">I am based in Brazil.</p>
-    </section>
+        <header id="topo" class="hero">
+            <div class="hero-main">
+                <p class="eyebrow" data-pt="Desenvolvedor full stack">Full stack developer</p>
+                <h1 class="hero-title" data-pt="Construo produtos de ponta a ponta, do app à API.">I build products end to end, from the app to the API.</h1>
+                <p class="hero-lead" data-pt="Engenheiro de software. Comecei no mobile e hoje trabalho em todas as camadas do produto. Gosto de resolver problemas complexos e entregar soluções eficientes.">Software engineer. I started in mobile and now work across every layer of the product. I like solving complex problems and shipping efficient solutions.</p>
+                <div class="actions">
+                    <a class="btn btn-solid" href="#projetos" data-pt="Ver projetos">See projects</a>
+                    <a class="btn btn-ghost" href="https://github.com/nataferreiradev" target="_blank" rel="noopener">GitHub</a>
+                    <a class="btn btn-ghost" href="https://www.linkedin.com/in/nat%C3%A3-nogueira-ferreira-631191263/" target="_blank" rel="noopener">LinkedIn</a>
+                </div>
+                <div class="chips">
+                    <span class="chip">Full stack</span>
+                    <span class="chip">@nataferreiradev</span>
+                </div>
+            </div>
 
-    <section id="projetos">
-        <h2 data-pt="ls ~/projetos">ls ~/projects</h2>
-        <div id="projects-container"></div>
-    </section>
+            <div class="hero-term">
+                <div class="term">
+                    <div class="term-bar">
+                        <span class="dot" style="background: #FF5F57"></span>
+                        <span class="dot" style="background: #FEBC2E"></span>
+                        <span class="dot" style="background: #28C840"></span>
+                        <span class="term-title">nata@dev — zsh</span>
+                    </div>
+                    <div class="term-body" id="term-body" aria-hidden="true"></div>
+                </div>
+            </div>
+        </header>
+    </div>
+</div>
 
-    <section id="posts">
-        <h2 data-pt="ls ~/posts">ls ~/posts</h2>
-        <div id="posts-container"></div>
-    </section>
-
-    <section id="contact">
-        <h2 data-pt="cat contato.txt">cat contact.txt</h2>
-        <div class="social-links">
-            <a href="https://www.linkedin.com/in/nat%C3%A3-nogueira-ferreira-631191263/" target="_blank">
-                <i class="fab fa-linkedin"></i> LinkedIn
-            </a>
-            <a href="https://github.com/nataferreiradev" target="_blank">
-                <i class="fab fa-github"></i> GitHub
-            </a>
+<main>
+    <section id="sobre" class="band band-white">
+        <div class="wrap about">
+            <div class="about-text">
+                <h2 class="h2" data-pt="Sobre">About</h2>
+                <p data-pt="Sou engenheiro de software com experiência em desenvolvimento de aplicativos mobile. Tenho paixão por resolver problemas complexos e criar soluções eficientes, sempre buscando aprimorar minhas habilidades e aprender novas tecnologias. Meu foco é escrever código de alta qualidade e desenvolver aplicações que gerem impacto real.">I am a software engineer with experience in mobile application development. I have a passion for solving complex problems and creating efficient solutions, always striving to improve my skills and learn new technologies. My focus is on writing high-quality code and building applications that make a real impact.</p>
+                <p data-pt="Atualmente sou desenvolvedor mobile pleno na Compusoftware, em Araçatuba, SP. Nas horas vagas construo coisas do zero para entender como funcionam por dentro, como um banco de dados relacional em Go.">I am currently a mid-level mobile developer at Compusoftware in Araçatuba, SP, Brazil. In my spare time I build things from scratch to understand how they work inside, like a relational database in Go.</p>
+            </div>
+            <div class="about-side">
+                <h3 class="label" data-pt="Stack">Stack</h3>
+                <div class="chips">
+                    <span class="chip">Go</span>
+                    <span class="chip">Dart</span>
+                    <span class="chip">Mobile</span>
+                    <span class="chip">SQL</span>
+                    <span class="chip">Parsers</span>
+                    <span class="chip">TCP</span>
+                </div>
+            </div>
         </div>
     </section>
-    </main>
-  </div>
+
+    <section id="projetos" class="band">
+        <div class="wrap">
+            <div class="section-head">
+                <h2 class="h2" data-pt="Projetos">Projects</h2>
+                <a class="more" href="https://github.com/nataferreiradev" target="_blank" rel="noopener" data-pt="Todos no GitHub →">All on GitHub →</a>
+            </div>
+            <div class="grid" id="projects-container"></div>
+        </div>
+    </section>
+
+    <section id="posts" class="band band-white">
+        <div class="wrap">
+            <div class="section-head section-head-tight">
+                <h2 class="h2" data-pt="Postagens">Posts</h2>
+                <span class="muted" data-pt="Textos sobre o que estou aprendendo e construindo.">Writing about what I am learning and building.</span>
+            </div>
+            <div class="rows" id="posts-container"></div>
+        </div>
+    </section>
+
+    <section id="contato" class="band band-tint">
+        <div class="wrap contact">
+            <div class="contact-text">
+                <h2 class="h2 h2-lg" data-pt="Vamos conversar sobre o seu próximo projeto?">Shall we talk about your next project?</h2>
+                <p data-pt="Me chama no LinkedIn ou dá uma olhada no que estou construindo no GitHub.">Reach out on LinkedIn or take a look at what I am building on GitHub.</p>
+            </div>
+            <div class="actions">
+                <a class="btn btn-solid" href="https://www.linkedin.com/in/nat%C3%A3-nogueira-ferreira-631191263/" target="_blank" rel="noopener">LinkedIn</a>
+                <a class="btn btn-ghost" href="https://github.com/nataferreiradev" target="_blank" rel="noopener">GitHub</a>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <div class="wrap">
+        <span>© Natã Nogueira Ferreira</span>
+        <span class="mono" data-pt="Brasil">Brazil</span>
+    </div>
+</footer>
 
     <script src="src/scripts/i18n.js"></script>
     <script src="src/scripts/script.js"></script>
